@@ -1,0 +1,5 @@
+Date,Activity,Amount,Type,Closing Balance
+01-04-2026,Wallet Add Cash,1000.00,CREDIT,1000.00
+01-04-2026,Mobile Recharge,-299.00,DEBIT,701.00
+02-04-2026,UPI Transfer to Rahul,-500.00,DEBIT,201.00
+03-04-2026,Cashback Reward,25.00,CREDIT,226.00

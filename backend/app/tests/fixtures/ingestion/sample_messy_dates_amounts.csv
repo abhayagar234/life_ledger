@@ -1,0 +1,5 @@
+txn date,details,debit,credit,amount
+1 Apr 2026,UPI/DR/12345/AMAZON PAY,450.00,, 
+2026/04/02,NEFT CR ACME PVT LTD,,15000.00,
+03-04-26,Rent Payment,(12000.00),, 
+45415,POS TXN D MART,-850.25,, 
