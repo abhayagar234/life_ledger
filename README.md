@@ -18,16 +18,36 @@ Their real safe-to-spend is ₹250 — not ₹1,500. Nobody told them. No app, n
 
 Household debt in India hit 41.3% of GDP in 2025. Personal loan defaults under ₹1L reached 44%. Indians are not bad with money — they are flying blind.
 
+### More real problems this app can solve
+
+- **Salary looks bigger than reality**  
+  A user sees `₹6,000` in the bank, but `₹3,000` rent, `₹1,500` EMI, and `₹900` subscriptions are already committed. The app should show what is truly free before they spend wrongly.
+
+- **Cash and online money are mixed in real life**  
+  A person pays some things in cash, some by UPI, some by credit card. Their statement alone is incomplete, but they also will not do full bookkeeping. The app needs to combine imported history with a few lightweight corrections.
+
+- **Upcoming dues are remembered too late**  
+  School fees, medicine, rent, EMI, and subscriptions are often known mentally but not protected in time. The app should turn “I know it is coming” into a visible amount that reduces safe-to-spend now.
+
+- **A user spends from credit card and forgets the future hit**  
+  Credit card spending can feel invisible in the moment. The app should treat that as a future due to protect, not as free money.
+
+- **Informal income makes bank balance misleading**  
+  Tailoring income, cash sales, family transfers, mandi cash, or side work may never appear cleanly in one bank feed. The app should let users add only what matters without forcing daily accounting.
+
+- **A family manager needs one answer, not ten finance screens**  
+  One person may be handling salary, children’s expenses, rent, and irregular household cash. They do not need categories first. They need one calm answer: “How much is safe right now?”
+
 ---
 
 ## What It Does
 
-- Import one bank or UPI statement CSV — no daily tracking required
+- Start with sample statement history or import one bank / UPI statement CSV
 - Strip out all committed expenses: EMI, rent, subscriptions, upcoming bills
 - Show what is actually safe to spend — not the bank balance lie
 - Surface upcoming dues with specific amounts and dates before they hit
 - Show a plain language answer: *"You are covered till May 1 — ₹250 is yours for anything extra"*
-- Flag government schemes the user likely qualifies for (Ayushman Bharat, PM Kisan, etc.)
+- Let the user add missing cash, online / UPI, credit card, and upcoming due details between imports
 
 ---
 
@@ -48,7 +68,7 @@ The Account Aggregator framework launched in India in 2021–22 makes this techn
 - **Cash + UPI + credit together** — not just bank balance
 - **Plain language always** — no jargon, no pie charts as hero
 - **Action-oriented, never alarming** — *"₹4,200 to protect before May 1"* not *"you may run short"*
-- **Medical, food, education are never flagged as overspend** — always show a safety path
+- **Essential spending is treated carefully** — food, medical, and household needs should not feel like moral failure
 - **Trust before monetization** — show government schemes and opportunities as help, not ads
 
 ---
@@ -82,20 +102,23 @@ The Account Aggregator framework launched in India in 2021–22 makes this techn
 
 ## What Is Built
 
-- Full onboarding — user type, income pattern, cash setup, CSV import
-- Cashflow engine — safe_to_spend, runway, watchouts, confidence scoring
-- CSV ingestion pipeline — normalisation, deduplication, categorisation
-- Fuel gauge home screen — green/yellow/red, plain language headline
-- Quick cash entry — add spend/income between imports, auto-refreshes dashboard
-- Demo data seeding — realistic sample with upcoming dues
+- Persona-aware onboarding — user type, income pattern, cash setup
+- Sample statement flow — setup saves first, then loads realistic history automatically
+- Cashflow engine — safe_to_spend, protected dues, daily-needs coverage, runway, confidence scoring
+- CSV ingestion foundation — normalisation, deduplication, categorisation
+- Fuel gauge home screen — green/yellow/red, plain language headline, hero number
+- Manual money updates — cash, online / UPI, credit card, split payment validation
+- Add upcoming due flow — protect a due that is not visible in imported history yet
+- Freshness messaging on home — prompts users when the answer may be stale
+- Sample data seeding — realistic salary, rent, subscriptions, and dues
 
 ## What Is Coming
 
 - Real auth (email/OTP) — currently demo stub
-- Forgotten subscriptions surface — "3 charges you may have forgotten"
-- Stale data indicator — "Last updated 3 days ago"
+- Forgotten subscriptions as a dedicated wow-moment card — right now this is only surfaced through watchouts
 - Government opportunities card — Ayushman Bharat, PM Kisan based on profile
 - EMI auto-materialisation from import patterns — not manual entry
+- Full due management — edit / remove / mark named upcoming dues from home
 - Hindi language support
 - SMS parsing for real-time UPI capture
 - Account Aggregator integration — replace CSV with live bank sync
@@ -137,9 +160,14 @@ uvicorn app.main:app --reload
 
 ## Sharing With Friends (Expo Go)
 
+This works best for local or supervised testing, not broad public sharing.
+
 1. Run `npx expo start` in the mobile folder
-2. Share the QR code on WhatsApp
-3. Friend downloads Expo Go, scans link, done
+2. Make sure the backend is reachable from the tester's device
+3. Share the QR code or Expo link
+4. Friend downloads Expo Go and opens the app
+
+For remote unguided testing, a hosted backend plus Android APK is the better path.
 
 ## Android APK Build
 
@@ -147,7 +175,7 @@ uvicorn app.main:app --reload
 npx eas build --platform android --profile preview
 ```
 
-Produces a `.apk` link you can share directly on WhatsApp. No Expo Go needed.
+Produces a `.apk` link you can share directly on WhatsApp. No Expo Go needed, but the backend still needs to be publicly reachable.
 
 ---
 
