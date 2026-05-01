@@ -91,6 +91,15 @@ function createDefaultDraft(): OnboardingDraft {
   };
 }
 
+function createDemoDisplayName() {
+  return `MoneyOS User ${new Date().toLocaleTimeString("en-IN", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false
+  })}`;
+}
+
 function currentPeriod() {
   const now = new Date();
   return {
@@ -127,8 +136,17 @@ export const useSessionStore = create<SessionStore>()(
         set({ loading: true, error: null });
         try {
           let userId = get().userId;
-          let displayName = get().displayName || "MoneyOS User";
+          let displayName = get().displayName || createDemoDisplayName();
           if (!userId) {
+            if (!get().displayName || get().displayName === "MoneyOS User") {
+              set((state) => ({
+                displayName,
+                onboardingDraft: {
+                  ...state.onboardingDraft,
+                  displayName
+                }
+              }));
+            }
             const login = await demoLogin({ display_name: displayName });
             userId = login.user_id;
             displayName = login.display_name;
@@ -167,12 +185,7 @@ export const useSessionStore = create<SessionStore>()(
         }
       },
       startFreshDemo: async () => {
-        const fallbackName = `MoneyOS User ${new Date().toLocaleTimeString("en-IN", {
-          hour: "2-digit",
-          minute: "2-digit",
-          second: "2-digit",
-          hour12: false
-        })}`;
+        const fallbackName = createDemoDisplayName();
 
         set({
           loading: true,
