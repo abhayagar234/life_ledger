@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: life-ledger-backend
+    runtime: docker
+    rootDir: backend
+    plan: free
+    autoDeploy: true
+    healthCheckPath: /
+    envVars:
+      - key: DATABASE_URL
+        sync: false
