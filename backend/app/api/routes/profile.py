@@ -40,6 +40,7 @@ def upsert_profile_onboarding(
     profile.tracking_scope = payload.tracking_scope.value
     profile.start_cash_amount = payload.start_cash_amount
     profile.salary_day_of_month = payload.salary_day_of_month
+    profile.next_income_in_days = payload.next_income_in_days
     profile.business_mode_enabled = payload.business_mode_enabled
     profile.currency_code = "INR"
     profile.updated_at = datetime.utcnow()

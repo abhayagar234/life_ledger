@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user, get_db
+from app.models.emi_payment import EMIPayment
 from app.models.ledger_entry import LedgerEntry
 from app.models.user import User
 from app.schemas.ledger import LedgerEntryCreate, LedgerEntryRead
@@ -28,6 +29,16 @@ def create_ledger_entry(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    emi_payment = None
+    if payload.emi_payment_id:
+        emi_payment = (
+            db.query(EMIPayment)
+            .filter(EMIPayment.id == payload.emi_payment_id, EMIPayment.user_id == current_user.id)
+            .first()
+        )
+        if emi_payment is None:
+            raise HTTPException(status_code=404, detail="Due item not found")
+
     entry = LedgerEntry(
         user_id=current_user.id,
         entry_type=payload.entry_type.value,
@@ -45,6 +56,12 @@ def create_ledger_entry(
         is_business=payload.is_business,
     )
     db.add(entry)
+    if emi_payment and payload.entry_type.value == "emi_payment":
+        updated_paid = float(emi_payment.amount_paid) + float(payload.amount)
+        emi_payment.amount_paid = updated_paid
+        emi_payment.paid_date = payload.entry_date
+        emi_payment.status = "paid" if updated_paid >= float(emi_payment.amount_due) else "partial"
+        db.add(emi_payment)
     db.commit()
     db.refresh(entry)
     return entry

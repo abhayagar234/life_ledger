@@ -3,19 +3,21 @@ import { StyleSheet, Switch, Text, TextInput, View } from "react-native";
 
 import { AppScreen } from "../../components/AppScreen";
 import { Button } from "../../components/Button";
+import { t } from "../../i18n";
 import { useSessionStore } from "../../store/session";
 import { commonStyles, theme } from "../../theme";
 
 export default function CashSetupScreen() {
   const draft = useSessionStore((state) => state.onboardingDraft);
+  const language = useSessionStore((state) => state.onboardingDraft.preferredLanguage);
   const setDraft = useSessionStore((state) => state.setDraft);
 
   return (
-    <AppScreen title="Do you want to track cash in hand?" subtitle="Many people spend in cash. This helps show what is left.">
+    <AppScreen title={t(language, "cashSetupTitle")} subtitle={t(language, "cashSetupSubtitle")}>
       <View style={[commonStyles.card, styles.row]}>
         <View style={styles.copy}>
-          <Text style={styles.label}>Track cash</Text>
-          <Text style={styles.help}>Wallet cash plus home cash if you want.</Text>
+          <Text style={styles.label}>{t(language, "trackCash")}</Text>
+          <Text style={styles.help}>{t(language, "trackCashHelp")}</Text>
         </View>
         <Switch
           value={draft.tracksCash}
@@ -26,10 +28,10 @@ export default function CashSetupScreen() {
 
       {draft.tracksCash ? (
         <View style={[commonStyles.card, styles.field]}>
-          <Text style={styles.label}>Starting cash amount</Text>
+          <Text style={styles.label}>{t(language, "startingCash")}</Text>
           <TextInput
             keyboardType="numeric"
-            placeholder="Example: 2500"
+            placeholder={t(language, "startingCashExample")}
             placeholderTextColor={theme.colors.textMuted}
             style={styles.input}
             value={draft.startCashAmount}
@@ -38,7 +40,7 @@ export default function CashSetupScreen() {
         </View>
       ) : null}
 
-      <Button label="Continue" onPress={() => router.push("/onboarding/csv-import")} />
+      <Button label={t(language, "continue")} onPress={() => router.push("/onboarding/complete")} />
     </AppScreen>
   );
 }

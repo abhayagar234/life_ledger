@@ -8,6 +8,7 @@ import {
   getMonthlySummary,
   getProfile,
   getSpendingSummary,
+  loadSampleStatement,
   listInsights,
   upsertProfile
 } from "../services/api/moneyos";
@@ -22,6 +23,7 @@ import type {
   TrackingScope,
   UserType
 } from "../services/api/types";
+import type { LanguageCode } from "../i18n";
 
 type DashboardState = {
   monthlySummary: MonthlySummaryRead | null;
@@ -32,8 +34,10 @@ type DashboardState = {
 
 type OnboardingDraft = {
   displayName: string;
+  preferredLanguage: LanguageCode;
   userType: UserType | null;
   incomePattern: IncomePattern | null;
+  nextIncomeInDays: string;
   tracksCash: boolean;
   tracksLoans: boolean;
   tracksEmi: boolean;
@@ -61,11 +65,22 @@ type SessionStore = {
   startFreshDemo: () => Promise<void>;
 };
 
+function createEmptyDashboard(): DashboardState {
+  return {
+    monthlySummary: null,
+    spendingSummary: null,
+    insightCards: [],
+    cashflowSummary: null
+  };
+}
+
 function createDefaultDraft(): OnboardingDraft {
   return {
     displayName: "MoneyOS User",
+    preferredLanguage: "en",
     userType: null,
     incomePattern: null,
+    nextIncomeInDays: "",
     tracksCash: true,
     tracksLoans: false,
     tracksEmi: false,
@@ -94,12 +109,7 @@ export const useSessionStore = create<SessionStore>()(
       userId: null,
       displayName: "MoneyOS User",
       profile: null,
-      dashboard: {
-        monthlySummary: null,
-        spendingSummary: null,
-        insightCards: [],
-        cashflowSummary: null
-      },
+      dashboard: createEmptyDashboard(),
       onboardingDraft: createDefaultDraft(),
       markHydrated: () => set({ hydrated: true }),
       setDraft: (patch) =>
@@ -132,8 +142,10 @@ export const useSessionStore = create<SessionStore>()(
             onboardingDraft: profile
               ? {
                   displayName,
+                  preferredLanguage: currentState.onboardingDraft.preferredLanguage,
                   userType: profile.user_type,
                   incomePattern: profile.income_pattern,
+                  nextIncomeInDays: profile.next_income_in_days ? String(profile.next_income_in_days) : "",
                   tracksCash: profile.tracks_cash,
                   tracksLoans: profile.tracks_loans,
                   tracksEmi: profile.tracks_emi,
@@ -168,16 +180,13 @@ export const useSessionStore = create<SessionStore>()(
           userId: null,
           profile: null,
           dashboard: {
-            monthlySummary: null,
-            spendingSummary: null,
-            insightCards: [],
-            cashflowSummary: null
+            ...createEmptyDashboard()
           },
           displayName: fallbackName,
           onboardingDraft: {
-            ...createDefaultDraft(),
-            displayName: fallbackName
-          }
+              ...createDefaultDraft(),
+              displayName: fallbackName
+            }
         });
 
         try {
@@ -209,19 +218,27 @@ export const useSessionStore = create<SessionStore>()(
         }
         try {
           const { year, month } = currentPeriod();
-          const [monthlySummary, spendingSummary, insightCards, cashflowSummary] = await Promise.all([
+          const cashflowSummary = await getCashflowSummary(userId);
+          const [monthlySummaryResult, spendingSummaryResult, insightCardsResult] = await Promise.allSettled([
             getMonthlySummary(userId, year, month),
             getSpendingSummary(userId, year, month),
-            listInsights(userId, year, month),
-            getCashflowSummary(userId)
+            listInsights(userId, year, month)
           ]);
+
+          const optionalErrors = [monthlySummaryResult, spendingSummaryResult, insightCardsResult].filter(
+            (result): result is PromiseRejectedResult => result.status === "rejected"
+          );
+
           set({
             dashboard: {
-              monthlySummary,
-              spendingSummary,
-              insightCards,
+              monthlySummary: monthlySummaryResult.status === "fulfilled" ? monthlySummaryResult.value : null,
+              spendingSummary: spendingSummaryResult.status === "fulfilled" ? spendingSummaryResult.value : null,
+              insightCards: insightCardsResult.status === "fulfilled" ? insightCardsResult.value : [],
               cashflowSummary
-            }
+            },
+            error: optionalErrors.length
+              ? "Some secondary insights could not refresh, but your main cashflow answer is up to date."
+              : null
           });
         } catch (error) {
           set({ error: error instanceof Error ? error.message : "Could not load the dashboard." });
@@ -248,11 +265,16 @@ export const useSessionStore = create<SessionStore>()(
             tracking_scope: onboardingDraft.trackingScope,
             start_cash_amount: onboardingDraft.startCashAmount ? Number(onboardingDraft.startCashAmount) : null,
             salary_day_of_month: onboardingDraft.salaryDayOfMonth ? Number(onboardingDraft.salaryDayOfMonth) : null,
+            next_income_in_days: onboardingDraft.nextIncomeInDays ? Number(onboardingDraft.nextIncomeInDays) : null,
             business_mode_enabled: onboardingDraft.businessModeEnabled
           };
 
           const profile = await upsertProfile(userId, payload);
-          set({ profile, displayName: payload.display_name });
+          set({
+            profile,
+            displayName: payload.display_name
+          });
+          await loadSampleStatement(userId);
           await get().refreshDashboard();
           return profile;
         } catch (error) {

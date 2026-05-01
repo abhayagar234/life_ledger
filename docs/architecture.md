@@ -2,200 +2,115 @@
 
 ## Current Phase
 
-Phase 1: Product blueprint
+Current phase: early-access demo build for MoneyOS.
 
-## Product Scope
+The product is centered on survival clarity:
 
-Life Ledger starts with a single module called MoneyOS. The v1 goal is a functional demo app for manual money tracking, cash visibility, loan and EMI tracking, CSV import, backend normalization, basic insights, simple budgeting support, and AI coaching in plain language.
+- `Will my money last till the next income?`
+- `What dues should I protect first?`
+- `How much is safe to spend right now?`
 
-The v1 system should:
+## Product Shape
 
-- work well on low-end mobile devices
-- support irregular income and heavy cash usage
-- keep ledger entry usable without bank integrations
-- treat AI as assistive, not foundational
-- stay simple enough for one backend and one mobile app team to ship quickly
+The current architecture supports a lightweight, explainable client-server app:
 
-The v1 system should not include:
+1. mobile app for onboarding, home summary, and lightweight corrections
+2. FastAPI backend for profile, imports, cashflow logic, and due handling
+3. SQL database for user, profile, imports, normalized transactions, dues, and manual ledger events
 
-- live bank account aggregation
-- UPI integrations
-- Account Aggregator integrations
-- OCR-heavy document pipelines
-- complex event-driven microservices
-- fine-tuned ML models
+This is a modular monolith, not a distributed system.
 
-## High-Level Architecture
+## What The System Does Today
 
-The MVP uses a straightforward client-server design.
-
-1. Mobile app: React Native with Expo and TypeScript
-2. API layer: FastAPI
-3. Primary database: PostgreSQL
-4. Background processing: lightweight async jobs with Redis-backed queue or simple background workers
-5. CSV processing: pandas or polars in the backend
-6. AI services: external LLM API later for coaching and categorization fallback
-
-## System Components
-
-### 1. Mobile App
+### Mobile App
 
 Primary responsibilities:
 
-- onboarding and user-type selection
-- manual ledger entry
-- cash balance tracking
-- loan, EMI, and interest entry
-- CSV upload flow
-- transaction list and grouped insights
-- simple budget views
-- AI coach chat or card-based prompts
+- persona-aware onboarding
+- auto-load sample statement history after setup
+- show cashflow home screen with:
+  - hero status
+  - safe-to-spend / still-to-protect
+  - gauge
+  - freshness messaging
+  - watchouts
+  - explanations
+- accept lightweight manual corrections:
+  - cash in hand
+  - big spend
+  - cash received
+  - due paid
+- add upcoming due
 
-Mobile design rules:
-
-- mobile-first and thumb-friendly
-- simple language with icons and examples
-- adaptive home screen by user type
-- limited choices per screen
-- safe offline-first assumptions for entry capture where possible
-
-### 2. Backend API
+### Backend API
 
 Primary responsibilities:
 
-- authentication bootstrap suitable for demo environments
-- account, wallet, ledger, loan, budget, and insight APIs
-- CSV upload endpoints
-- normalization and deduplication pipeline
+- auth-light session bootstrap
+- onboarding profile read/write
+- sample statement seeding
+- CSV import foundation
+- transaction normalization and deduplication
 - rule-based categorization
-- coaching prompt orchestration
+- recurring-pattern and due inference support
+- cashflow summary generation
+- ledger event capture
+- upcoming due creation
 
-The backend remains modular but monolithic in deployment. This keeps operations simple while preserving enough separation for growth.
+### Database
 
-Suggested modules:
+The database stores:
 
-- `auth`
-- `users`
-- `profiles`
-- `ledgers`
-- `transactions`
-- `cash_accounts`
-- `loans`
-- `budgets`
-- `imports`
-- `insights`
-- `coach`
-
-### 3. Database
-
-PostgreSQL stores:
-
-- user profile and persona selections
-- ledger accounts and cash balances
-- manual transactions
-- loans, EMI schedules, and interest terms
-- uploaded CSV file metadata
+- user and profile data
+- manual ledger events
+- import file metadata
+- raw imported rows
 - normalized transactions
-- deduplication fingerprints
-- category assignments
-- budget rules and budget periods
-- generated insight snapshots
-- coach conversation summaries if needed later
+- loan / EMI style due records
+- generated summary inputs
 
-### 4. Background Jobs
+## Architectural Principles
 
-Background jobs are used only where waiting would harm the UX:
+- deterministic numbers first
+- explanations should be traceable
+- imports should do the heavy lifting
+- manual input should stay lightweight
+- no black-box AI in the money math
+- no required live financial integrations in the demo build
 
-- CSV parsing
-- normalization
-- deduplication
-- bulk categorization
-- insight refresh
+## Current Deployment Shape
 
-The initial demo can use FastAPI background tasks. If job volume grows, move to Redis-backed workers without changing product behavior.
+### Mobile
 
-### 5. AI Layer
+- Expo + React Native + TypeScript
 
-AI is used only after the ledger works without it.
+### Backend
 
-Planned v1 AI uses:
+- FastAPI
+- SQLAlchemy
+- SQLite in local development
+- PostgreSQL-ready for hosted deployment
 
-- explain spending in simple language
-- suggest budget actions
-- summarize cash flow patterns
-- ask clarifying questions for unclear categories
+## What Is Not In The Current Architecture
 
-AI should not be the source of truth for balances, transaction storage, or core bookkeeping logic.
+These are not part of the real current build:
 
-## Core MVP Flows
+- live bank sync
+- UPI integrations
+- Account Aggregator integration
+- OCR-heavy ingestion
+- Redis job queues
+- production auth flows
+- real AI coach orchestration
+- microservices
 
-1. User selects profile type during onboarding
-2. User lands on a tailored home screen
-3. User adds manual income, expense, transfer, or loan event
-4. User optionally uploads CSV from wallet, bank export, or statement
-5. Backend parses, normalizes, and deduplicates transactions
-6. App shows grouped spending, cash status, and budget progress
-7. AI coach offers simple guidance based on ledger data
+## Why The Current Shape Is Intentionally Simple
 
-## Data Ownership Boundaries
+The product still needs to prove:
 
-Mobile app owns:
+- users understand the answer quickly
+- users trust dues protection
+- users use lightweight corrections
+- statement history plus manual updates feels believable
 
-- UI state
-- local draft entries
-- upload initiation
-- rendering of personalized flows
-
-Backend owns:
-
-- canonical transaction records
-- normalization
-- deduplication
-- categorization rules
-- budget calculations
-- insight generation
-- AI prompt assembly and safety controls
-
-## Simplicity Decisions
-
-To keep v1 practical:
-
-- use one primary ledger model for all persona types
-- model cash as an account, not a special-case side system
-- use rule-based categorization first
-- use CSV ingestion as the bridge to external financial data
-- postpone multilingual expansion until the English-first demo flow is stable
-- postpone family multi-user collaboration to a later phase unless needed for demo polish
-
-## Deployment Shape
-
-Recommended demo deployment:
-
-- Expo app for mobile clients
-- FastAPI app deployed as a single service
-- PostgreSQL as managed database
-- Redis only if async workloads justify it
-- object storage for CSV files if upload retention is needed
-
-## Security and Privacy Baseline
-
-Even for demo quality, the system should:
-
-- minimize stored PII
-- encrypt secrets and API keys
-- avoid sending raw financial history to AI unless needed
-- log imports and processing outcomes for debugging
-- keep audit-friendly timestamps on financial records
-
-## Future Expansion Path
-
-This architecture leaves room for:
-
-- richer financial connectors
-- multilingual interfaces
-- household shared ledgers
-- health record modules
-- reminders and repayment nudges
-- OCR and document extraction
-
-Those are future layers on top of the stable ledger, import, and insight foundation built in v1.
+A simple architecture is the right match for that stage.

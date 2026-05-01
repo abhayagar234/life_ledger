@@ -1,164 +1,223 @@
-# MoneyOS Mobile
+# Life Ledger — MoneyOS
 
-This is the Expo + React Native mobile app for Life Ledger MoneyOS.
+> "Will my money last till next payday?"
 
-MoneyOS is the first wedge of Life Ledger: a trusted consumer ledger that starts with financial cashflow intelligence and can later expand into broader life-data workflows.
+MoneyOS is a financial survival app built for India's mass market — the 180M+ salaried Indians earning ₹10K–₹50K/month who have smartphones, UPI, and real financial anxiety but zero tools built for their reality.
+
+This is **not** a budgeting app. Not an expense tracker. Not an investment platform.
+
+It answers one question, honestly, before the crisis hits.
+
+---
+
+## The Problem
+
+A person earns ₹8,000/month. Rent ₹3,000. EMI ₹2,000. Home expenses ₹1,500. Their bank shows ₹1,500 remaining and they feel okay. By the 15th they are borrowing from a colleague.
+
+Their real safe-to-spend is ₹250 — not ₹1,500. Nobody told them. No app, no bank, no tool shows them this number before it is too late.
+
+Household debt in India hit 41.3% of GDP in 2025. Personal loan defaults under ₹1L reached 44%. Indians are not bad with money — they are flying blind.
+
+### More real problems this app can solve
+
+- **Salary looks bigger than reality**  
+  A user sees `₹6,000` in the bank, but `₹3,000` rent, `₹1,500` EMI, and `₹900` subscriptions are already committed. The app should show what is truly free before they spend wrongly.
+
+- **Cash and online money are mixed in real life**  
+  A person pays some things in cash, some by UPI, some by credit card. Their statement alone is incomplete, but they also will not do full bookkeeping. The app needs to combine imported history with a few lightweight corrections.
+
+- **Upcoming dues are remembered too late**  
+  School fees, medicine, rent, EMI, and subscriptions are often known mentally but not protected in time. The app should turn “I know it is coming” into a visible amount that reduces safe-to-spend now.
+
+- **A user spends from credit card and forgets the future hit**  
+  Credit card spending can feel invisible in the moment. The app should treat that as a future due to protect, not as free money.
+
+- **Informal income makes bank balance misleading**  
+  Tailoring income, cash sales, family transfers, mandi cash, or side work may never appear cleanly in one bank feed. The app should let users add only what matters without forcing daily accounting.
+
+- **A family manager needs one answer, not ten finance screens**  
+  One person may be handling salary, children’s expenses, rent, and irregular household cash. They do not need categories first. They need one calm answer: “How much is safe right now?”
+
+---
+
+## What It Does
+
+- Start with sample statement history or import one bank / UPI statement CSV
+- Strip out all committed expenses: EMI, rent, subscriptions, upcoming bills
+- Show what is actually safe to spend — not the bank balance lie
+- Surface upcoming dues with specific amounts and dates before they hit
+- Show a plain language answer: *"You are covered till May 1 — ₹250 is yours for anything extra"*
+- Let the user add missing cash, online / UPI, credit card, and upcoming due details between imports
+- Ask how long current money should last, not just when salary comes
+
+---
+
+## Why This Has Not Been Built Before
+
+- CRED, Fi, Jupiter — built for top 5%, ₹50K+ income, credit score 750+
+- Walnut, MoneyView — backward-looking expense trackers, not survival tools
+- Banks — no incentive to tell you when you are about to run short
+- Global apps (Snoop, PocketGuard) — built on UK/US Open Banking, no India/UPI support
+
+The Account Aggregator framework launched in India in 2021–22 makes this technically possible for the first time. No one has built it yet for this segment.
+
+---
+
+## Product Principles
+
+- **One import per month is enough** — works without daily discipline
+- **Cash + UPI + credit together** — not just bank balance
+- **Plain language always** — no jargon, no pie charts as hero
+- **Action-oriented, never alarming** — *"₹4,200 to protect before May 1"* not *"you may run short"*
+- **Essential spending is treated carefully** — food, medical, and household needs should not feel like moral failure
+- **Trust before monetization** — show government schemes and opportunities as help, not ads
+
+---
 
 ## Stack
 
-- Expo
-- React Native
-- TypeScript
-- Expo Router
-- Zustand
+**Mobile**
+- Expo + React Native + TypeScript
+- Expo Router (file-based routing)
+- Zustand (state management)
 
-## Requirements
+**Backend**
+- FastAPI + SQLAlchemy
+- SQLite (dev) / PostgreSQL (production)
+- Rule-based cashflow engine — no black-box AI
 
-- Node.js `20`
-- npm `10` or later
+---
+
+## Key Metrics Calculated
+
+| Metric | What it means |
+|---|---|
+| `safe_to_spend` | After ALL committed expenses stripped |
+| `runway_days` | Days money lasts at current pace |
+| `safe_till_date` | The date money runs out |
+| `watchouts` | Specific upcoming hits — "Jio ₹349 on April 25" |
+| `safe_to_save` | Surplus after uncertainty buffer |
+| `safe_to_invest` | Only shown after 3 months consistent surplus |
+
+---
+
+## What Is Built
+
+- Language-first onboarding — English, Hindi, Marathi
+- Persona-aware onboarding — user type, income pattern, next-money horizon, cash setup
+- Sample statement flow — setup saves first, then loads realistic history automatically
+- Cashflow engine — safe_to_spend, protected dues, daily-needs coverage, runway, confidence scoring
+- CSV ingestion foundation — normalisation, deduplication, categorisation
+- Fuel gauge home screen — green/yellow/red, plain language headline, hero number
+- Keep Aside First layer — named dues with pending / partial / paid state
+- Manual money updates — cash, online / UPI, credit card, split payment validation
+- Add upcoming due flow — protect a due that is not visible in imported history yet, clearly for the current cycle
+- Freshness messaging on home — prompts users when the answer may be stale
+- Profile-aware sample data seeding:
+  - salaried
+  - daily wage
+  - farmer / seasonal
+  - business / self-employed
+  - family manager
+
+## What Is Coming
+
+- Real auth (email/OTP) — currently demo stub
+- Forgotten subscriptions as a dedicated wow-moment card — right now this is only surfaced through watchouts
+- Government opportunities card — Ayushman Bharat, PM Kisan based on profile
+- EMI / recurring due auto-materialisation from import patterns — not manual entry yet
+- Full due management — edit / remove / mark named upcoming dues from home
+- Full trust-surface localization beyond the current main path
+- SMS parsing for real-time UPI capture
+- Account Aggregator integration — replace CSV with live bank sync
+
+## Final Pre-Demo Checklist
+
+If we had to pick only three final changes before a serious demo, they are:
+
+1. Full Home/localization cleanup
+   Remove mixed English from the main trust path, especially Home labels, helper text, due/source labels, and action copy.
+2. True-or-honest recurring dues behavior
+   Either make recurring dues actually recur, or remove wording that implies automatic monthly carry-forward.
+3. Flawless onboarding-to-populated-home flow
+   Setup should finish, sample should autoload, and Home should open with believable data every time without an empty or confusing intermediate step.
+
+These three matter most because they directly affect trust, clarity, and demo smoothness.
+
+---
 
 ## Setup
 
 ```bash
+# Install dependencies
 cd mobile
 npm install
-```
 
-To load example environment values:
-
-```bash
-cd mobile
+# Copy environment config
 cp .env.example .env
-```
 
-## Run
-
-```bash
-cd mobile
+# Start
 npm start
 ```
 
-Useful shortcuts:
+The app reads backend URL from `EXPO_PUBLIC_API_BASE_URL`. Defaults to `http://127.0.0.1:8000`.
 
-- `npm run android`
-- `npm run ios`
-- `npm run web`
-- `npm run typecheck`
-
-## API Configuration
-
-The app reads the backend base URL from:
-
-- `EXPO_PUBLIC_API_BASE_URL`
-
-If not set, it defaults to:
-
-- `http://127.0.0.1:8000`
-
-Example:
+For physical device testing use your machine's LAN IP:
 
 ```bash
-cd mobile
 EXPO_PUBLIC_API_BASE_URL=http://192.168.1.20:8000 npm start
 ```
 
-Use your machine's local network IP when testing on a physical phone.
+---
 
-## Local Testing
-
-1. Start the backend:
+## Backend
 
 ```bash
 cd backend
 uvicorn app.main:app --reload
 ```
 
-2. Start the mobile app:
+---
+
+## Sharing With Friends (Expo Go)
+
+This works best for local or supervised testing, not broad public sharing.
+
+1. Run `npx expo start` in the mobile folder
+2. Make sure the backend is reachable from the tester's device
+3. Share the QR code or Expo link
+4. Friend downloads Expo Go and opens the app
+
+For remote unguided testing, a hosted backend plus Android APK is the better path.
+
+## Android APK Build
 
 ```bash
-cd mobile
-EXPO_PUBLIC_API_BASE_URL=http://192.168.1.20:8000 npm start
+npx eas build --platform android --profile preview
 ```
 
-3. Open it with:
+Produces a `.apk` link you can share directly on WhatsApp. No Expo Go needed, but the backend still needs to be publicly reachable.
 
-- Expo Go on a physical device
-- Android emulator
-- iOS simulator
+---
 
-## Packaged Build Testing
+## The Market
 
-This project now includes `EAS` build profiles for development, preview, and production.
+- 180M salaried Indians in tier 2/3 cities earning ₹15K–₹50K — zero tools built for them
+- Verified: no Indian app ships proactive cashflow runway for this segment today
+- Closest global equivalent: Snoop (UK) — raised $42M, acquired by a bank
+- Business model: trust first → insurance referral → credit when short → SIP when surplus detected
 
-### Preview APK For Android Testing
+---
 
-```bash
-cd mobile
-npx eas login
-npm run build:android:preview
-```
+## Competitive Position
 
-This profile builds an internal-distribution Android `apk`, which is the easiest format for manual device testing.
+| App | What they do | Serves our user? |
+|---|---|---|
+| CRED | Credit card rewards | No — top 5% only |
+| Fi / Jupiter | Neobank for salaried professionals | No — ₹50K+ income |
+| INDmoney | Wealth and investment tracking | No — assumes existing surplus |
+| Bachat | Daily micro-savings for self-employed | No — assumes you know you have surplus |
+| MoneyView | Expense tracking + lending | No — backward looking |
+| Snoop (UK) | Payday-to-payday cashflow | Yes — but UK only, no India |
 
-### Production Android Bundle
-
-```bash
-cd mobile
-npm run build:android:production
-```
-
-This creates an Android App Bundle for release workflows.
-
-### Preview iOS Build
-
-```bash
-cd mobile
-npm run build:ios:preview
-```
-
-### Production iOS Build
-
-```bash
-cd mobile
-npm run build:ios:production
-```
-
-## Build Profiles
-
-- `development`: internal development client build
-- `preview`: internal test build, Android outputs an `apk`
-- `production`: release-oriented build, Android outputs an `aab`
-
-The app variant is controlled by:
-
-- `EXPO_PUBLIC_APP_VARIANT`
-
-Current variants:
-
-- `dev`
-- `preview`
-- `production`
-
-These variants change the app name, URL scheme, and package identifiers so test builds do not collide with production installs.
-
-## Notes For Real Device Testing
-
-- use your machine's LAN IP, not `127.0.0.1`
-- make sure the backend allows connections from your phone
-- if the device cannot reach your local machine, use a tunnel or hosted API
-
-## Test Checklist
-
-Use [TESTING.md](/Users/Abhay/life-ledger/mobile/TESTING.md) for the first manual QA pass across onboarding and persona dashboards.
-
-## Current Scope
-
-The first scaffold includes:
-
-- onboarding flow
-- persona-based home dashboards
-- tab navigation
-- demo auth and onboarding API wiring
-- dashboard summary fetching
-
-Next screens like add-entry forms, CSV import, loans, and AI coach can now plug into this structure.
+**Nobody owns this space in India. We are first.**

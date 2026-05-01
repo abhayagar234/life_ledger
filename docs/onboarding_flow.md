@@ -2,44 +2,43 @@
 
 ## Goal
 
-Help a new user reach a useful dashboard and complete a first money action in under 2 minutes.
+Help a new user reach a useful dashboard and first value moment in under 2 minutes.
 
-The onboarding should feel calm, guided, and trustworthy. It should not ask for anything that is not needed for first value.
+The onboarding should feel calm, guided, and trustworthy. It should avoid finance jargon and should not ask for setup that is not needed for the first answer.
 
 ## UX Principles
 
 - one question per screen
 - large tap targets
 - short labels
-- clear icons with text
-- explain why a question matters
-- allow skipping optional setup
-- never block usage on CSV import
-- never ask for live bank, UPI, or Account Aggregator connection in v1
+- explain why each question matters
+- avoid “demo” or “prototype” language in the main flow
+- sample statement history should auto-load after setup
+- never require a real bank connection to get value
 
-## Onboarding Sequence
+## Current Onboarding Sequence
 
-### Screen 1. Welcome
+### Screen 1. Welcome + Language
 
 Purpose:
 
 - explain what the app does
 - reduce fear
-- set expectation that manual use works
+- set expectation that statement history and light corrections work together
 
 Primary content:
 
-- title: `Money made simple`
-- supporting text: `Track income, expense, cash, and loans in one place.`
-- trust line: `No bank connection needed to start.`
+- title: simple money clarity
+- supporting text: helps show what is safe before the next income
+- trust line: no live bank connection needed to start
+- language choice:
+  - English
+  - हिंदी
+  - मराठी
 
 Primary action:
 
 - `Start`
-
-Secondary action:
-
-- none
 
 ### Screen 2. User Type
 
@@ -47,22 +46,17 @@ Question:
 
 - `What fits you best?`
 
-Options:
+Current options:
 
-- salaried
-- daily wage
-- farmer / seasonal
-- business / self-employed
-- family manager
-
-UI pattern:
-
-- large icon cards
-- 1 short subtitle under each option
+- `💼 Salaried`
+- `🛠️ Daily Wage`
+- `🌾 Farmer / Seasonal`
+- `🏪 Business / Self-Employed`
+- `🏠 Family Manager`
 
 Reason shown:
 
-- `We will show the right home screen and shortcuts for you.`
+- `We’ll shape the questions and money view around your reality.`
 
 ### Screen 3. Income Rhythm
 
@@ -78,19 +72,36 @@ Options:
 - seasonal
 - mixed
 
-UI pattern:
+Important current behavior:
 
-- vertical choice list with icon + label
+- monthly earners may be asked the usual salary date
+- daily and seasonal users do not get forced into a monthly-date question
 
-Reason shown:
-
-- `This helps us show the right summary and reminders.`
-
-### Screen 4. Cash Setup
+### Screen 4. Next Money Horizon
 
 Question:
 
-- `Do you want to track cash in hand?`
+- `When should this money last till?`
+
+Current options:
+
+- about 3 days
+- about 1 week
+- about 15 days
+- about 1 month
+- about 2 months
+- about 3 months
+- about 6 months
+
+Reason shown:
+
+- `Pick the next meaningful money point so we can show a safer daily and overall spend number.`
+
+### Screen 5. Cash Setup
+
+Question:
+
+- `Do you want to include cash on hand?`
 
 Options:
 
@@ -99,138 +110,93 @@ Options:
 
 If yes:
 
-- input: starting cash amount
-- helper text: `Example: wallet cash + home cash`
+- input starting cash amount
+- helper text clarifies this includes wallet cash + home cash
 
-Reason shown:
-
-- `Many people spend in cash. This helps show what is left.`
-
-### Screen 5. Loans And EMI
-
-Question:
-
-- `Do you want to track loans or EMI?`
-
-Options:
-
-- yes
-- later
-
-If yes:
-
-- sub-options:
-- `I took a loan`
-- `I gave money to someone`
-- `I pay EMI`
-
-Reason shown:
-
-- `This helps you see what is due and what is pending.`
-
-### Screen 6. CSV Import Choice
-
-Question:
-
-- `Do you want to import a CSV now?`
-
-Options:
-
-- import now
-- do it later
-
-Helper text:
-
-- `You can also start with manual entry.`
-
-Reason shown:
-
-- `CSV import can save time, but it is optional.`
-
-### Screen 7. First Action
+### Screen 6. Final Setup
 
 Purpose:
 
-- avoid dropping the user on an empty home
-- create immediate success
+- collect name
+- reinforce the selected persona visually
+- complete setup without extra noise
 
-Primary choices:
+Current behavior:
 
-- add income
-- add expense
-- set cash
-- add loan
+- selected persona card is shown above the name field
+- setup save triggers sample statement autoload
+- user goes straight to Home after save with the first answer already loaded
+- sample history now changes by selected profile instead of using one generic salaried sample
 
-Behavior:
+## Important Changes From Older Flow
 
-- after one action, land on the user’s home dashboard
+The app no longer uses these as onboarding steps:
 
-## Persona-Based Variants
+- loan / EMI setup step
+- separate CSV decision step
+- “prototype works best…” copy
 
-The onboarding engine is shared. Only the wording, follow-up question, and default first action change by user type.
+Why:
+
+- those steps added friction before value
+- the user should first see the app work
+- important dues can be added after setup
+
+## Persona Variants
+
+The onboarding engine is shared. Only wording and follow-up logic change by user type.
 
 ### Salaried Variant
 
-Extra question:
+Can ask:
 
-- `When do you usually get salary?`
+- usual salary day or income timing
 
-Default home emphasis:
+Home emphasis:
 
-- this month spent
-- cash left
-- upcoming bills and EMI
+- safe till next salary
+- protected dues
+- safe to spend
 
-Recommended first action:
+### Daily Wage Variant
 
-- add salary
+Does not ask for a salary date.
 
-### Irregular Income Variant
+Home emphasis:
 
-This covers daily wage users and seasonal earners.
+- what is safe for the next few days
+- cash on hand
+- today’s or recent money change
+- tighter sample with small frequent inflows and lower buffer
 
-Extra question:
+### Farmer / Seasonal Variant
 
-- `Do you want to see money by day or by season?`
+Does not force a monthly framing.
 
-If daily wage:
+Home emphasis:
 
-- home emphasis:
-- earned today
-- spent today
-- cash left
-
-Recommended first action:
-
-- add today’s earning
-
-If farmer / seasonal:
-
-- home emphasis:
-- recent income
-- loans due
-- home vs work spend
-
-Recommended first action:
-
-- add latest income
+- this money should last
+- dues to protect
+- practical next action
+- seasonal sample with crop / mandi payout, tractor EMI, irrigation, and farm expenses
 
 ### Business / Self-Employed Variant
 
-Extra question:
+Home emphasis:
 
-- `Do you want to track home and business together or separately?`
+- money seen this cycle
+- dues coming up
+- what is free after protection
+- sample with customer payments, supplier payments, shop rent, and business EMI
 
-Default home emphasis:
+### Family Manager Variant
 
-- money in
-- money out
-- dues
-- cash balance
+Home emphasis:
 
-Recommended first action:
-
-- add sale
+- simple household answer
+- dues to keep aside
+- what is still safe
+- sample with home transfer, household bills, school fees, and groceries
 
 ## Happy Path Timing
 
@@ -240,31 +206,19 @@ Target time:
 - user type: 10 seconds
 - income rhythm: 10 seconds
 - cash setup: 15 seconds
-- loans and EMI: 15 seconds
-- CSV choice: 10 seconds
-- first action: 20 to 30 seconds
+- final setup: 15 to 20 seconds
 
 Total target:
 
 - under 2 minutes
 
-## Empty States During Onboarding
+## Empty States
 
-- no cash added yet: `Add cash now or do it later.`
-- no loan setup yet: `You can track this later too.`
-- CSV skipped: `No problem. You can import later from the home screen.`
+- no cash added yet: `You can add this later.`
+- no recent data yet: sample history is loaded automatically after setup based on the selected profile
 
-## Error States During Onboarding
+## Error States
 
 - invalid amount: `Enter numbers only`
 - no selection made: `Choose one option to continue`
-- import selected but no file chosen: `Pick a CSV file or skip for now`
-
-## Acceptance Criteria
-
-- user can complete onboarding in under 2 minutes
-- each screen asks only one main question
-- every option has both icon and text
-- skipping optional steps still leads to a useful dashboard
-- onboarding ends with a first money action, not an empty home
-- no onboarding step asks for live account linking
+- setup save failed: explain clearly and offer retry

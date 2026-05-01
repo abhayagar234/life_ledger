@@ -9,14 +9,16 @@ from sqlalchemy.orm import Session
 from app.models.emi_payment import EMIPayment
 from app.models.financial_profile import FinancialProfile
 from app.models.ledger_entry import LedgerEntry
+from app.models.loan import Loan
 from app.models.normalized_transaction import NormalizedTransaction
-from app.schemas.cashflow import CashflowSummaryResponse
+from app.schemas.cashflow import CashflowSummaryResponse, ProtectedDueItem
 
 
 ESSENTIAL_CATEGORIES = {"groceries", "health", "travel", "bills", "rent", "emi_loans", "farming_expense", "education"}
 NON_SPEND_CATEGORIES = {"transfers"}
 SAVINGS_CATEGORIES = {"savings_investments"}
-FIXED_DUE_CATEGORIES = {"rent", "emi_loans", "bills", "subscriptions", "insurance"}
+FIXED_DUE_CATEGORIES = {"rent", "emi_loans", "bills", "subscriptions", "insurance", "credit_card_payment"}
+ROLLING_DAILY_NEEDS_CATEGORIES = {"groceries", "health", "travel", "farming_expense"}
 
 
 def _round_money(value: float) -> float:
@@ -31,8 +33,50 @@ def _format_date_label(value: date | None) -> str:
     return value.strftime("%b %d") if value else "the next income"
 
 
+def _next_income_label(profile: FinancialProfile | None, value: date | None) -> str:
+    if profile and profile.next_income_in_days and profile.next_income_in_days > 0:
+        if profile.next_income_in_days <= 3:
+            return "the next few days"
+        if profile.next_income_in_days <= 7:
+            return "the next week"
+        if profile.next_income_in_days <= 30:
+            return "the next money point"
+        return "the next big money point"
+    if profile and profile.income_pattern == "weekly":
+        return "the end of this week"
+    if profile and profile.income_pattern == "monthly" and not profile.salary_day_of_month:
+        return "the end of this month"
+    if profile and profile.income_pattern == "daily":
+        return "the next few days"
+    if profile and profile.income_pattern == "seasonal":
+        return value.strftime("%b %d") if value else "the next money point"
+    return _format_date_label(value)
+
+
+def _humanize_counterparty(value: str | None, fallback: str) -> str:
+    raw = (value or fallback or "").replace("_", " ").strip()
+    if not raw:
+        return "A due"
+    return " ".join(part.capitalize() for part in raw.split())
+
+
+def _slugify_due_part(value: str) -> str:
+    safe = "".join(char.lower() if char.isalnum() else "-" for char in value.strip())
+    while "--" in safe:
+        safe = safe.replace("--", "-")
+    return safe.strip("-") or "due"
+
+
 def _end_of_month(day: date) -> date:
     return date(day.year, day.month, monthrange(day.year, day.month)[1])
+
+
+def _start_of_week(day: date) -> date:
+    return day - timedelta(days=day.weekday())
+
+
+def _end_of_week(day: date) -> date:
+    return _start_of_week(day) + timedelta(days=6)
 
 
 def _safe_date_for_day(base: date, target_day: int) -> date:
@@ -53,12 +97,31 @@ def _previous_month(base: date) -> date:
 
 
 def _next_income_date(profile: FinancialProfile | None, rows: list[NormalizedTransaction], as_of: date) -> tuple[date | None, str]:
+    if profile and profile.next_income_in_days and profile.next_income_in_days > 0:
+        return as_of + timedelta(days=profile.next_income_in_days), "high"
     if profile and profile.salary_day_of_month:
         same_month = _safe_date_for_day(as_of, profile.salary_day_of_month)
-        if same_month >= as_of:
+        salary_seen_today = any(
+            row.direction == "credit"
+            and row.category_code == "salary_income"
+            and row.transaction_date == as_of
+            for row in rows
+        )
+        if same_month > as_of:
+            return same_month, "high"
+        if same_month == as_of and not salary_seen_today:
             return same_month, "high"
         next_month = _next_month(as_of)
         return _safe_date_for_day(next_month, profile.salary_day_of_month), "high"
+
+    if profile and profile.income_pattern == "weekly":
+        return _end_of_week(as_of), "medium"
+    if profile and profile.income_pattern == "monthly":
+        return _end_of_month(as_of), "medium"
+    if profile and profile.income_pattern == "daily":
+        return as_of + timedelta(days=3), "low"
+    if profile and profile.income_pattern == "seasonal":
+        return as_of + timedelta(days=30), "low"
 
     salary_rows = [
         row
@@ -87,9 +150,20 @@ def _next_income_date(profile: FinancialProfile | None, rows: list[NormalizedTra
 
 
 def _cycle_start_date(profile: FinancialProfile | None, rows: list[NormalizedTransaction], as_of: date) -> date:
+    if profile and profile.next_income_in_days and profile.next_income_in_days > 0:
+        return as_of - timedelta(days=min(profile.next_income_in_days, 30))
     if profile and profile.salary_day_of_month:
         candidate = _safe_date_for_day(as_of, profile.salary_day_of_month)
         return candidate if candidate <= as_of else _safe_date_for_day(_previous_month(as_of), profile.salary_day_of_month)
+
+    if profile and profile.income_pattern == "weekly":
+        return _start_of_week(as_of)
+    if profile and profile.income_pattern == "monthly":
+        return date(as_of.year, as_of.month, 1)
+    if profile and profile.income_pattern == "daily":
+        return as_of - timedelta(days=6)
+    if profile and profile.income_pattern == "seasonal":
+        return as_of - timedelta(days=30)
 
     salary_rows = [
         row.transaction_date
@@ -140,6 +214,8 @@ def _manual_due_payments(db: Session, user_id: str, cycle_start: date, as_of: da
         .filter(
             LedgerEntry.user_id == user_id,
             LedgerEntry.entry_type == "emi_payment",
+            LedgerEntry.emi_payment_id.is_(None),
+            ~LedgerEntry.source_label.like("pattern_due:%"),
             LedgerEntry.entry_date >= cycle_start,
             LedgerEntry.entry_date <= as_of,
         )
@@ -211,13 +287,119 @@ def _manual_trailing_spend(db: Session, user_id: str, trailing_start: date, as_o
         if entry.entry_type in {"expense", "emi_payment"} and entry.cash_direction == "out":
             if category not in SAVINGS_CATEGORIES:
                 trailing_total += amount
-            if category in ESSENTIAL_CATEGORIES:
+            if category in ROLLING_DAILY_NEEDS_CATEGORIES:
                 trailing_essential += amount
 
     return round(trailing_total, 2), round(trailing_essential, 2)
 
 
-def _fixed_due_estimate(rows: list[NormalizedTransaction], as_of: date, horizon_days: int) -> tuple[float, list[str]]:
+def _manual_upcoming_due_watchouts(db: Session, user_id: str, as_of: date, next_income_date: date) -> list[str]:
+    items = (
+        db.query(EMIPayment, Loan)
+        .join(Loan, Loan.id == EMIPayment.loan_id)
+        .filter(
+            EMIPayment.user_id == user_id,
+            EMIPayment.status != "paid",
+            EMIPayment.due_date >= as_of,
+            EMIPayment.due_date <= next_income_date,
+        )
+        .order_by(EMIPayment.due_date.asc(), EMIPayment.created_at.asc())
+        .all()
+    )
+
+    watchouts: list[str] = []
+    for emi_payment, loan in items:
+        remaining_due = max(float(emi_payment.amount_due) - float(emi_payment.amount_paid), 0.0)
+        if remaining_due <= 0:
+            continue
+        readable_name = _humanize_counterparty(loan.counterparty_name, "due")
+        formatted_date = emi_payment.due_date.strftime("%B %d")
+        watchouts.append(f"{readable_name} {_fmt_money(remaining_due)} on {formatted_date}. Keep this aside first.")
+    return watchouts
+
+
+def _paid_pattern_due_keys(db: Session, user_id: str, cycle_start: date, as_of: date) -> set[str]:
+    entries = (
+        db.query(LedgerEntry)
+        .filter(
+            LedgerEntry.user_id == user_id,
+            LedgerEntry.entry_type == "emi_payment",
+            LedgerEntry.entry_date >= cycle_start,
+            LedgerEntry.entry_date <= as_of,
+            LedgerEntry.source_label.like("pattern_due:%"),
+        )
+        .all()
+    )
+    return {
+        entry.source_label
+        for entry in entries
+        if entry.source_label and entry.source_label.startswith("pattern_due:")
+    }
+
+
+def _manual_due_items(
+    db: Session,
+    user_id: str,
+    cycle_start: date,
+    as_of: date,
+    next_income_date: date,
+) -> list[ProtectedDueItem]:
+    items = (
+        db.query(EMIPayment, Loan)
+        .join(Loan, Loan.id == EMIPayment.loan_id)
+        .filter(
+            EMIPayment.user_id == user_id,
+            EMIPayment.due_date >= cycle_start,
+            EMIPayment.due_date <= next_income_date,
+        )
+        .order_by(EMIPayment.due_date.asc(), EMIPayment.created_at.asc())
+        .all()
+    )
+
+    results: list[ProtectedDueItem] = []
+    for emi_payment, loan in items:
+        remaining_due = max(float(emi_payment.amount_due) - float(emi_payment.amount_paid), 0.0)
+        is_paid = emi_payment.status == "paid" or remaining_due <= 0
+        if not is_paid and emi_payment.due_date < as_of:
+            continue
+        results.append(
+            ProtectedDueItem(
+                due_key=f"manual_due:{emi_payment.id}",
+                name=_humanize_counterparty(loan.counterparty_name, "Due"),
+                amount=round(float(emi_payment.amount_due), 2),
+                due_date=emi_payment.due_date,
+                status="paid" if is_paid else ("partial" if float(emi_payment.amount_paid) > 0 else "pending"),
+                amount_paid=round(float(emi_payment.amount_paid), 2),
+                remaining_amount=round(remaining_due, 2),
+                source_type=emi_payment.source_type,
+                emi_payment_id=emi_payment.id,
+                loan_id=loan.id,
+            )
+        )
+    return results
+
+
+def _manual_due_total(db: Session, user_id: str, as_of: date, next_income_date: date) -> float:
+    items = (
+        db.query(EMIPayment)
+        .filter(
+            EMIPayment.user_id == user_id,
+            EMIPayment.status != "paid",
+            EMIPayment.due_date >= as_of,
+            EMIPayment.due_date <= next_income_date,
+        )
+        .all()
+    )
+    return round(sum(max(float(item.amount_due) - float(item.amount_paid), 0.0) for item in items), 2)
+
+
+def _fixed_due_estimate(
+    rows: list[NormalizedTransaction],
+    as_of: date,
+    cycle_start: date,
+    horizon_days: int,
+    paid_due_keys: set[str],
+) -> tuple[float, list[str], list[str], list[str], list[ProtectedDueItem]]:
     horizon_end = as_of + timedelta(days=horizon_days)
     grouped: dict[str, list[NormalizedTransaction]] = defaultdict(list)
     for row in rows:
@@ -230,6 +412,9 @@ def _fixed_due_estimate(rows: list[NormalizedTransaction], as_of: date, horizon_
 
     due_total = 0.0
     labels: list[str] = []
+    due_watchouts: list[str] = []
+    forgotten_subscriptions: list[str] = []
+    due_items: list[ProtectedDueItem] = []
     for key, group in grouped.items():
         group.sort(key=lambda row: row.transaction_date, reverse=True)
         latest = group[0]
@@ -246,11 +431,37 @@ def _fixed_due_estimate(rows: list[NormalizedTransaction], as_of: date, horizon_
 
         if as_of <= candidate <= horizon_end:
             amount = float(latest.amount)
-            due_total += amount
             label = latest.category_code.replace("_", " ") if latest.category_code else "fixed due"
             labels.append(label)
+            readable_name = _humanize_counterparty(latest.counterparty_name or latest.description_clean, label)
+            formatted_date = candidate.strftime("%B %d")
+            due_key = (
+                f"pattern_due:{latest.category_code or 'due'}:"
+                f"{_slugify_due_part(latest.counterparty_name or latest.description_clean or key)}:"
+                f"{candidate.isoformat()}:{int(round(amount))}"
+            )
+            is_paid = due_key in paid_due_keys
+            if not is_paid:
+                due_total += amount
+                due_watchouts.append(f"{readable_name} {_fmt_money(amount)} on {formatted_date}. Keep this aside first.")
+            if latest.category_code == "subscriptions":
+                forgotten_subscriptions.append(f"{readable_name} {_fmt_money(amount)} on {formatted_date}")
+            due_items.append(
+                ProtectedDueItem(
+                    due_key=due_key,
+                    name=readable_name,
+                    amount=round(amount, 2),
+                    due_date=candidate,
+                    status="paid" if is_paid else "pending",
+                    amount_paid=round(amount if is_paid else 0.0, 2),
+                    remaining_amount=round(0.0 if is_paid else amount, 2),
+                    source_type="statement_pattern",
+                    emi_payment_id=None,
+                    loan_id=None,
+                )
+            )
 
-    return due_total, sorted(set(labels))
+    return due_total, sorted(set(labels)), due_watchouts, forgotten_subscriptions, due_items
 
 
 def build_cashflow_summary(db: Session, user_id: str, as_of: date | None = None) -> CashflowSummaryResponse:
@@ -270,31 +481,48 @@ def build_cashflow_summary(db: Session, user_id: str, as_of: date | None = None)
     )
 
     if not rows:
+        next_income_date, _ = _next_income_date(profile, rows, as_of_date)
+        if next_income_date is None:
+            next_income_date = _end_of_month(as_of_date)
+        cycle_start = _cycle_start_date(profile, rows, as_of_date)
+        manual_cash_total, has_explicit_cash_set = _manual_cash_on_hand(db, user_id)
+        starting_cash = float(profile.start_cash_amount) if profile and profile.start_cash_amount and not has_explicit_cash_set else 0.0
+        manual_cash = starting_cash + manual_cash_total
+        manual_due_items = _manual_due_items(db, user_id, cycle_start, as_of_date, next_income_date)
+        manual_due_total = _manual_due_total(db, user_id, as_of_date, next_income_date)
         return CashflowSummaryResponse(
             as_of_date=as_of_date,
+            latest_activity_date=None,
             status="needs_data",
-            headline="Start with a statement, then protect cash clearly.",
-            plain_summary="Bring one bank or UPI CSV first, then add any important cash on hand. We will help you protect the next few days calmly.",
+            headline="Start clean, then add only what matters.",
+            plain_summary="You can add cash, dues, and important money changes now. Statement history will make the answer smarter later.",
             safe_till_date=None,
-            next_income_date=None,
-            effective_available_money=0,
+            next_income_date=next_income_date,
+            effective_available_money=_round_money(max(manual_cash - manual_due_total, 0.0)),
             liquid_balance=0,
-            cash_on_hand=0,
-            upcoming_dues_total=0,
+            cash_on_hand=round(manual_cash, 2),
+            upcoming_dues_total=manual_due_total,
             daily_needs_buffer=0,
             daily_needs_required=0,
             baseline_daily_spend=0,
             runway_days=None,
-            safe_to_spend=0,
+            safe_to_spend=_round_money(max(manual_cash - manual_due_total, 0.0)),
             safe_to_save=0,
             safe_to_invest=0,
             shortfall_amount=0,
             confidence="low",
             explanations=[
-                "We need imported statement history before we can estimate your next income and upcoming dues.",
+                "This is a clean start with no statement history yet.",
+                "Any cash or due you add now will show up here first.",
             ],
-            watchouts=["Bring one statement first, then keep only the cash updates that matter."],
+            watchouts=["Add statement history later if you want the app to detect recurring spends and improve the answer."],
+            protected_due_items=manual_due_items,
         )
+
+    latest_activity_date = max(
+        [row.transaction_date for row in rows],
+        default=None,
+    )
 
     cycle_start = _cycle_start_date(profile, rows, as_of_date)
     bank_observed_balance = 0.0
@@ -323,7 +551,7 @@ def build_cashflow_summary(db: Session, user_id: str, as_of: date | None = None)
 
         if category not in SAVINGS_CATEGORIES:
             trailing_total_spend += amount
-        if category in ESSENTIAL_CATEGORIES:
+        if category in ROLLING_DAILY_NEEDS_CATEGORIES:
             trailing_essential_spend += amount
 
     bank_observed_balance += _manual_bank_activity(db, user_id, cycle_start, as_of_date)
@@ -350,7 +578,11 @@ def build_cashflow_summary(db: Session, user_id: str, as_of: date | None = None)
         )
         .all()
     )
-    pattern_due_total, due_labels = _fixed_due_estimate(rows, as_of_date, days_until_income)
+    paid_pattern_due_keys = _paid_pattern_due_keys(db, user_id, cycle_start, as_of_date)
+    pattern_due_total, due_labels, due_watchouts, forgotten_subscriptions, pattern_due_items = _fixed_due_estimate(
+        rows, as_of_date, cycle_start, days_until_income, paid_pattern_due_keys
+    )
+    manual_due_items = _manual_due_items(db, user_id, cycle_start, as_of_date, next_income_date)
     manual_card_due_total = _manual_card_due_activity(db, user_id, cycle_start, as_of_date)
     gross_protected_dues = max(emi_due_total, 0.0) + pattern_due_total + manual_card_due_total
     manual_due_paid_total = _manual_due_payments(db, user_id, cycle_start, as_of_date)
@@ -384,7 +616,7 @@ def build_cashflow_summary(db: Session, user_id: str, as_of: date | None = None)
     safe_to_save = _round_money(safe_leftover - uncertainty_buffer)
     safe_to_invest = _round_money(safe_to_save - max(500.0, uncertainty_buffer * 0.5) if safe_to_save > 0 else 0.0)
 
-    next_income_label = _format_date_label(next_income_date)
+    next_income_label = _next_income_label(profile, next_income_date)
 
     if shortfall_amount > 0:
         status = "risk"
@@ -428,8 +660,8 @@ def build_cashflow_summary(db: Session, user_id: str, as_of: date | None = None)
     explanations.append("Bank money here means money seen in this income cycle from imported statement activity, not a live bank balance.")
 
     watchouts: list[str] = []
-    if due_labels:
-        watchouts.append(f"Keep aside money for {', '.join(due_labels[:3])} first.")
+    if forgotten_subscriptions:
+        watchouts.append(f"We found charges you may have forgotten: {', '.join(forgotten_subscriptions[:3])}.")
     if safe_to_spend <= 0:
         watchouts.append(f"Protect essentials till {next_income_label}. Avoid big spends this week.")
     elif status == "tight":
@@ -441,8 +673,14 @@ def build_cashflow_summary(db: Session, user_id: str, as_of: date | None = None)
     if not watchouts:
         watchouts.append(f"You're steady till {next_income_label}. Keep dues protected and avoid unnecessary big spends.")
 
+    protected_due_items = sorted(
+        [*manual_due_items, *pattern_due_items],
+        key=lambda item: (0 if item.status == "pending" else 1, item.due_date, item.name.lower()),
+    )
+
     return CashflowSummaryResponse(
         as_of_date=as_of_date,
+        latest_activity_date=latest_activity_date,
         status=status,
         headline=headline,
         plain_summary=plain_summary,
@@ -463,4 +701,5 @@ def build_cashflow_summary(db: Session, user_id: str, as_of: date | None = None)
         confidence=confidence,
         explanations=explanations,
         watchouts=watchouts,
+        protected_due_items=protected_due_items,
     )

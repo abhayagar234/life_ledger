@@ -4,20 +4,39 @@ import { LinearGradient } from "expo-linear-gradient";
 
 import { AppScreen } from "../../components/AppScreen";
 import { Button } from "../../components/Button";
+import { ChoiceCard } from "../../components/ChoiceCard";
+import { languageOptions, t } from "../../i18n";
+import { useSessionStore } from "../../store/session";
 import { theme } from "../../theme";
 
 export default function WelcomeScreen() {
+  const language = useSessionStore((state) => state.onboardingDraft.preferredLanguage);
+  const setDraft = useSessionStore((state) => state.setDraft);
+
   return (
     <AppScreen scroll={false}>
       <LinearGradient colors={["#0E5B57", "#093E3B"]} style={styles.hero}>
-        <Text style={styles.overline}>Life Ledger MoneyOS</Text>
-        <Text style={styles.title}>Money made simple</Text>
-        <Text style={styles.body}>Track income, expense, cash, and loans in one calm place.</Text>
-        <Text style={styles.trust}>No bank connection needed to start.</Text>
+        <Text style={styles.overline}>{t(language, "appName")}</Text>
+        <Text style={styles.title}>{t(language, "welcomeTitle")}</Text>
+        <Text style={styles.body}>{t(language, "welcomeBody")}</Text>
+        <Text style={styles.trust}>{t(language, "welcomeTrust")}</Text>
       </LinearGradient>
 
       <View style={styles.footer}>
-        <Button label="Start" onPress={() => router.push("/onboarding/user-type")} />
+        <Text style={styles.languageTitle}>{t(language, "chooseLanguage")}</Text>
+        <View style={styles.languageList}>
+          {languageOptions.map((option) => (
+            <ChoiceCard
+              key={option.value}
+              title={option.label}
+              subtitle={option.subtitle}
+              icon="language-outline"
+              selected={language === option.value}
+              onPress={() => setDraft({ preferredLanguage: option.value })}
+            />
+          ))}
+        </View>
+        <Button label={t(language, "start")} onPress={() => router.push("/onboarding/user-type")} />
       </View>
     </AppScreen>
   );
@@ -53,6 +72,15 @@ const styles = StyleSheet.create({
     color: "rgba(255,255,255,0.76)"
   },
   footer: {
-    marginTop: theme.spacing.xl
+    marginTop: theme.spacing.xl,
+    gap: theme.spacing.md
+  },
+  languageTitle: {
+    fontSize: theme.typography.body,
+    fontWeight: "700",
+    color: theme.colors.text
+  },
+  languageList: {
+    gap: theme.spacing.sm
   }
 });

@@ -5,113 +5,138 @@ import { ActivityIndicator, StyleSheet, Text, TextInput, View } from "react-nati
 import { AppScreen } from "../../components/AppScreen";
 import { Button } from "../../components/Button";
 import { ChoiceCard } from "../../components/ChoiceCard";
-import { trackingScopeOptions } from "../../features/onboarding/options";
-import { loadSampleStatement } from "../../services/api/moneyos";
+import { getTrackingScopeOptions } from "../../features/onboarding/options";
+import { LanguageCode, t } from "../../i18n";
 import { useSessionStore } from "../../store/session";
 import { commonStyles, theme } from "../../theme";
 
-function selectedPersona(userType: string | null) {
+function selectedPersona(userType: string | null, language: LanguageCode) {
   switch (userType) {
     case "salaried":
       return {
         emoji: "💼",
-        title: "Salaried",
-        subtitle: "Monthly salary, office work, regular bills"
+        title: language === "hi" ? "वेतनभोगी" : language === "mr" ? "पगारदार" : "Salaried",
+        subtitle:
+          language === "hi"
+            ? "मासिक वेतन, नौकरी और नियमित बिल"
+            : language === "mr"
+              ? "मासिक पगार, नोकरी आणि नियमित बिले"
+              : "Monthly salary, office work, regular bills"
       };
     case "daily_wage":
       return {
         emoji: "🛠️",
-        title: "Daily Wage",
-        subtitle: "Construction, driving, labor, or daily cash work"
+        title: language === "hi" ? "दिहाड़ी मज़दूर" : language === "mr" ? "रोजंदारी कामगार" : "Daily Wage",
+        subtitle:
+          language === "hi"
+            ? "मज़दूरी, ड्राइविंग या रोज़ की कमाई"
+            : language === "mr"
+              ? "मजुरी, ड्रायव्हिंग किंवा रोजची कमाई"
+              : "Construction, driving, labor, or daily cash work"
       };
     case "farmer_seasonal":
       return {
         emoji: "🌾",
-        title: "Farmer / Seasonal",
-        subtitle: "Harvest money, seasonal sales, or income in waves"
+        title: language === "hi" ? "किसान / मौसमी" : language === "mr" ? "शेतकरी / मोसमी" : "Farmer / Seasonal",
+        subtitle:
+          language === "hi"
+            ? "फसल, मंडी या लहरों में आने वाली आय"
+            : language === "mr"
+              ? "पीक, बाजार किंवा टप्प्याटप्प्याने येणारी कमाई"
+              : "Harvest money, seasonal sales, or income in waves"
       };
     case "business_self_employed":
       return {
         emoji: "🏪",
-        title: "Business / Self-Employed",
-        subtitle: "Shop, service work, freelancing, or mixed money"
+        title: language === "hi" ? "व्यवसाय / स्वयंरोज़गार" : language === "mr" ? "व्यवसाय / स्वयंरोजगार" : "Business / Self-Employed",
+        subtitle:
+          language === "hi"
+            ? "दुकान, फ्रीलांस, सेवा काम या मिला-जुला पैसा"
+            : language === "mr"
+              ? "दुकान, फ्रीलान्स, सेवा काम किंवा मिसळलेले पैसे"
+              : "Shop, service work, freelancing, or mixed money"
       };
     case "family_manager":
       return {
         emoji: "🏠",
-        title: "Family Manager",
-        subtitle: "Keeping household money visible in one place"
+        title: language === "hi" ? "परिवार संभालने वाले" : language === "mr" ? "घराचा कारभारी" : "Family Manager",
+        subtitle:
+          language === "hi"
+            ? "घर के पैसों को एक जगह दिखाई देने वाला"
+            : language === "mr"
+              ? "घरचे पैसे एका ठिकाणी दिसतील असे"
+              : "Keeping household money visible in one place"
       };
     default:
       return null;
   }
 }
 
+function selectedPathCopy(language: LanguageCode) {
+  if (language === "hi") {
+    return "चुना हुआ रास्ता";
+  }
+  if (language === "mr") {
+    return "निवडलेला मार्ग";
+  }
+  return "Selected Path";
+}
+
 export default function OnboardingCompleteScreen() {
   const draft = useSessionStore((state) => state.onboardingDraft);
   const setDraft = useSessionStore((state) => state.setDraft);
   const saveOnboarding = useSessionStore((state) => state.saveOnboarding);
-  const userId = useSessionStore((state) => state.userId);
-  const refreshDashboard = useSessionStore((state) => state.refreshDashboard);
   const saving = useSessionStore((state) => state.savingOnboarding);
-  const persona = useMemo(() => selectedPersona(draft.userType), [draft.userType]);
+  const language = useSessionStore((state) => state.onboardingDraft.preferredLanguage);
+  const persona = useMemo(() => selectedPersona(draft.userType, language), [draft.userType, language]);
+  const trackingScopeOptions = getTrackingScopeOptions(language);
 
   const needsSalaryDay = useMemo(() => draft.incomePattern === "monthly", [draft.incomePattern]);
   const needsScope = useMemo(
     () => draft.userType === "business_self_employed" || draft.userType === "family_manager",
     [draft.userType]
   );
-  const monthlyMoneyLabel = useMemo(() => {
-    if (draft.userType === "salaried") {
-      return "When does salary usually come?";
-    }
-    if (draft.userType === "family_manager") {
-      return "When does the main monthly money usually come?";
-    }
-    return "When does monthly money usually come in?";
-  }, [draft.userType]);
-  const monthlyMoneyPlaceholder = useMemo(() => {
-    if (draft.userType === "salaried") {
-      return "Example: 1 for salary on the 1st";
-    }
-    return "Example: 5";
-  }, [draft.userType]);
-
   return (
-    <AppScreen title="One last step" subtitle="Save your setup, then we will load a sample statement so you can see the app work right away.">
+    <AppScreen title={t(language, "finalStepTitle")} subtitle={t(language, "finalStepSubtitle")}>
       {persona ? (
         <View style={[commonStyles.card, commonStyles.shadow, styles.personaCard]}>
           <View style={styles.avatarWrap}>
             <Text style={styles.avatarEmoji}>{persona.emoji}</Text>
           </View>
           <View style={styles.personaText}>
-            <Text style={styles.personaEyebrow}>Selected Path</Text>
+            <Text style={styles.personaEyebrow}>{selectedPathCopy(language)}</Text>
             <Text style={styles.personaTitle}>{persona.title}</Text>
             <Text style={styles.personaSubtitle}>{persona.subtitle}</Text>
           </View>
         </View>
       ) : null}
 
-      <View style={[commonStyles.card, styles.field]}>
-        <Text style={styles.label}>What should we call you?</Text>
+        <View style={[commonStyles.card, styles.field]}>
+        <Text style={styles.label}>{t(language, "yourName")}</Text>
         <TextInput
           style={styles.input}
           value={draft.displayName}
           onChangeText={(value) => setDraft({ displayName: value })}
-          placeholder="Your name"
+          placeholder={t(language, "yourNamePlaceholder")}
           placeholderTextColor={theme.colors.textMuted}
         />
       </View>
 
       {needsSalaryDay ? (
         <View style={[commonStyles.card, styles.field]}>
-          <Text style={styles.label}>{monthlyMoneyLabel}</Text>
+          <Text style={styles.label}>
+            {draft.userType === "salaried"
+              ? t(language, "salariedMoney")
+              : draft.userType === "family_manager"
+                ? t(language, "familyMoney")
+                : t(language, "monthlyMoney")}
+          </Text>
           <TextInput
             keyboardType="numeric"
             style={styles.input}
             value={draft.salaryDayOfMonth}
             onChangeText={(value) => setDraft({ salaryDayOfMonth: value })}
-            placeholder={monthlyMoneyPlaceholder}
+            placeholder={draft.userType === "salaried" ? t(language, "salariedExample") : t(language, "monthlyExample")}
             placeholderTextColor={theme.colors.textMuted}
           />
         </View>
@@ -136,15 +161,11 @@ export default function OnboardingCompleteScreen() {
         : null}
 
       <Button
-        label={saving ? "Saving..." : "Save And See My First Answer"}
+        label={saving ? t(language, "saving") : t(language, "finishSetup")}
         disabled={saving || !draft.userType || !draft.incomePattern}
         onPress={async () => {
           try {
             await saveOnboarding();
-            if (userId) {
-              await loadSampleStatement(userId);
-              await refreshDashboard();
-            }
             router.replace("/(tabs)/home");
           } catch {
             return;
@@ -155,7 +176,7 @@ export default function OnboardingCompleteScreen() {
       {saving ? (
         <View style={styles.loadingRow}>
           <ActivityIndicator color={theme.colors.primary} />
-          <Text style={styles.help}>Saving your setup, loading sample history, and preparing your first answer.</Text>
+          <Text style={styles.help}>{t(language, "saveHelp")}</Text>
         </View>
       ) : null}
     </AppScreen>

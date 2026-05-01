@@ -2,45 +2,37 @@
 
 ## Purpose
 
-Define the MVP mobile screens for MoneyOS with a strong focus on simplicity, clarity, and fast manual use.
+Define the current MoneyOS mobile experience with a focus on survival clarity, low-friction updates, and trust.
 
-The app should feel premium by being calm, confident, and easy to scan. It should not feel busy, technical, or finance-heavy.
+The app should feel calm, specific, and easy to scan. It should not feel like a generic budgeting dashboard.
 
 ## Design Direction
 
 - mobile-first
-- clean spacing
+- one clear answer before detail
 - high contrast
 - big tap areas
-- soft cards with clear hierarchy
-- icons paired with plain text
-- summary before detail
-- grouped insights before raw transaction list
+- plain language over finance jargon
+- status first, numbers second, explanations third
+- named dues over abstract totals
 
 ## Navigation Map
 
-Primary navigation should use 4 bottom tabs:
+Current primary tab experience is intentionally reduced:
 
 - Home
-- Insights
-- Loans
-- You
+- Setup
 
-A floating primary action button should open `Add Entry`.
+Other surfaces exist in the codebase, but incomplete tabs should not lead the experience.
 
 Secondary stacked screens:
 
 - onboarding screens
-- add income
-- add expense
-- add cash
-- add loan / EMI
-- CSV import
-- transaction details
-- category details
-- AI coach
+- add cash / due update
+- add upcoming due
+- import statement
 
-## Screen List
+## Current Screen List
 
 ### 1. Welcome
 
@@ -56,17 +48,17 @@ Primary action:
 
 Goal:
 
-- place the user into the right dashboard pattern
+- place the user into the right money framing
 
 UI:
 
-- icon card grid or stacked cards
+- large role cards with emoji + plain text
 
 ### 3. Income Rhythm
 
 Goal:
 
-- pick the right summary frame
+- understand how money usually comes in
 
 UI:
 
@@ -76,426 +68,141 @@ UI:
 
 Goal:
 
-- capture initial cash if relevant
+- capture starting cash when relevant
 
 UI:
 
 - yes/no choice
 - single amount input
 
-### 5. Loans / EMI Setup
+### 5. Final Setup
 
 Goal:
 
-- identify whether dues should appear on home
+- confirm the selected persona
+- capture name
+- complete setup and auto-load sample history
 
-UI:
-
-- yes/later choice
-- optional sub-choice
-
-### 6. CSV Import Choice
-
-Goal:
-
-- offer import without making it mandatory
-
-UI:
-
-- two large actions: `Import now`, `Later`
-
-### 7. Home Dashboard
+### 6. Home Dashboard
 
 Goal:
 
 - answer the most important money question first
 
-Shared layout:
+Current shared layout:
 
-- top summary card
-- 2 to 4 quick action buttons
-- dues / alerts strip
-- grouped spending preview
-- recent activity preview
+- persona banner
+- one primary CTA
+- status headline
+- hero number:
+  - `Safe to spend`
+  - or `Still to protect`
+- fuel gauge
+- stale/freshness card
+- watchouts
+- supporting metrics
+- explanations
+- more actions
 
-Raw transaction list:
+## Current Home Experience
 
-- only a short preview on home
-- full list lives deeper in the flow
-
-## Dashboard Variants
-
-### A. Salaried Dashboard
-
-Primary question answered:
-
-- `How much can I safely spend before next salary?`
-
-Top card:
-
-- cash left
-- month spent
-- salary date or next income date
-
-Quick actions:
-
-- add expense
-- add income
-- set cash
-- add EMI
-
-Secondary modules:
-
-- bills and EMI due
-- top spend categories
-- budget status
-
-Recent activity:
-
-- last 3 to 5 entries only
-
-### B. Irregular Income Dashboard
-
-This variant serves daily wage and farmer / seasonal users with slightly different labels.
+### Shared Home Pattern
 
 Primary question answered:
 
-- `Did money come in enough, and what is left now?`
+- `Am I okay till the next income?`
 
-Top card:
+Hero area:
 
-- today or recent income
-- today or recent spend
-- cash left
+- plain-language status
+- big hero number
+- green / yellow / red gauge
 
-Quick actions:
+Supporting metrics:
 
-- earned today
-- spent cash
-- add loan
-- set cash
+- upcoming dues
+- daily needs covered
+- bank money seen this cycle
+- cash on hand
 
-Secondary modules for daily wage:
+Current helper pattern:
 
-- this week earnings
-- today spend groups
-- money due soon
+- `Why We Think So`
+- specific watchouts where possible
+- freshness indicator when data is stale
 
-Secondary modules for farmer / seasonal:
+### Persona Flavor
 
-- season income
-- home vs work spend
-- loans and interest due
+The structure stays shared. The emotional framing may differ by persona, but the app should not fork into wildly different dashboards.
 
-Recent activity:
+- salaried: safe till next salary
+- daily wage: what is safe right now
+- seasonal: what must be protected before the next money event
+- business/self-employed: what is free after dues
+- family manager: what the household can safely use
 
-- last few entries with larger amounts and icons
+## Add Cash / Due Update Flow
 
-### C. Business / Self-Employed Dashboard
+This is the main correction flow in the current app.
 
-Primary question answered:
+Actions:
 
-- `What came in, what went out, and what is still due?`
+- cash in hand
+- big cash spent
+- cash received
+- due paid
 
-Top card:
+Important current behavior:
 
-- money in
-- money out
-- cash balance
+- source-aware choices:
+  - cash
+  - online / UPI
+  - credit card
+  - split cash + online where relevant
+- impossible cash-only payments are blocked
+- the home answer refreshes after save
 
-Quick actions:
+## Add Upcoming Due Flow
 
-- add sale
-- add expense
-- add due
-- set cash
+Goal:
 
-Secondary modules:
-
-- dues to collect
-- dues to pay
-- top spend buckets
-- this week summary
-
-Recent activity:
-
-- short list with tags like `sale`, `expense`, `due`
-
-## Add Entry Flow
-
-The add flow should be the fastest path in the app.
-
-### Add Entry Hub
-
-Options:
-
-- income
-- expense
-- cash
-- loan / due
-- EMI payment
-
-UI:
-
-- large icon tiles
-- one-line examples under each option
-
-### Add Income
+- let the user protect an important payment that may not be visible in statement history yet
 
 Fields:
 
-- amount
-- source
-- date
-- note optional
-
-Suggested quick sources:
-
-- salary
-- sale
-- wage
-- seasonal income
-- other
-
-### Add Expense
-
-Fields:
-
-- amount
-- category
-- paid by
-- date
-- note optional
-
-Suggested quick categories:
-
-- food
-- travel
-- home
-- school
-- medicine
-- business
-
-### Add Cash
-
-Use cases:
-
-- set opening cash
-- cash added
-- cash removed
-- cash correction
-
-Fields:
-
-- amount
-- action type
-- location optional
-- note optional
-
-### Add Loan / EMI
-
-Fields:
-
-- type
-- who
+- due name
 - amount
 - due date
-- interest optional
-- paid / pending status
+- optional monthly repeat
+- optional note
 
-## CSV Import Flow
+Expected effect:
 
-### Import Entry
+- increases protected dues
+- reduces safe-to-spend
+- can appear in watchouts
 
-Entry points:
-
-- onboarding
-- home shortcut
-- profile / settings
-
-### Upload Screen
-
-Actions:
-
-- choose file
-- see supported examples
-- continue
-
-Helper text:
-
-- `Import bank, card, or wallet CSV files`
-
-### Mapping Review
+## Import Statement Screen
 
 Goal:
 
-- show a simple preview of columns
+- give users a lightweight way to load statement-based history
 
-UI:
+Current reality:
 
-- detected columns
-- editable mapping chips
-- preview of first few rows
+- sample statement path is the strongest current route
+- real import exists as a foundation, not yet the best polished first-run flow
 
-### Import Result
+## Current UX Gaps
 
-Show:
+- named protected dues list is not fully visible on Home yet
+- due-paid flow is still more generic than ideal
+- real CSV import still trails the sample path
+- coach / deeper insights should not be treated as finished product surfaces
 
-- rows imported
-- duplicates skipped
-- rows needing review
+## Next Screen-Level Priorities
 
-Primary actions:
-
-- view imported entries
-- review uncertain rows later
-
-## Insights Screen
-
-Goal:
-
-- show grouped spending first
-
-Sections:
-
-- top spending groups
-- income vs expense summary
-- monthly trend summary
-- budget status
-
-Rules:
-
-- use simple bars or rings only if readable
-- one insight card should say what changed in plain language
-- raw list is not the hero content
-
-## Loans Screen
-
-Goal:
-
-- keep dues simple and visible
-
-Sections:
-
-- due soon
-- borrowed
-- lent
-- EMI list
-
-Each loan card should show:
-
-- name or label
-- amount left
-- due date
-- status
-
-Primary actions:
-
-- add loan
-- mark paid
-
-## AI Coach Screen
-
-Goal:
-
-- offer calm, actionable advice
-
-UI model:
-
-- coach card list first
-- optional chat later
-
-Card examples:
-
-- `Food spending is high this week`
-- `EMI due in 3 days`
-- `Cash is falling faster than usual`
-
-Each card should include:
-
-- short insight
-- one suggested action
-- simple explanation
-
-## Empty States
-
-### Home Empty
-
-- `Start by adding income or expense`
-
-Actions:
-
-- add income
-- add expense
-
-### Insights Empty
-
-- `Add a few entries to see spending groups`
-
-Action:
-
-- add entry
-
-### Loans Empty
-
-- `No loans or EMI yet`
-
-Action:
-
-- add loan
-
-### CSV Empty
-
-- `Import a CSV or continue with manual entry`
-
-Actions:
-
-- choose file
-- skip
-
-## Error States
-
-### Generic Form Error
-
-- `Please check the highlighted field`
-
-### CSV Error
-
-- `We could not read this file`
-- `Try another CSV file or add entries manually`
-
-### Network Error
-
-- `Something went wrong`
-- `Your data is safe. Try again`
-
-### No Data Error
-
-- `Nothing to show yet`
-
-## Component List
-
-- primary button
-- secondary button
-- icon card
-- summary card
-- metric pill
-- quick action tile
-- alert strip
-- category bar row
-- transaction preview row
-- loan card
-- coach card
-- empty state card
-- error banner
-- amount input
-- segmented selector
-- bottom tab bar
-- floating action button
-
-## Build Notes
-
-- preferred stack: React Native + Expo + TypeScript
-- styling: NativeWind or a very small token-based design system
-- use a single component language across all personas
-- persona differences should come from content, module order, and labels more than fully different layouts
+1. protected dues list with paid state on Home
+2. stronger forgotten-subscription card
+3. clearer named due management from imported history
+4. real auth entry flow

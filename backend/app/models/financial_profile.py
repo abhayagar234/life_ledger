@@ -19,6 +19,7 @@ class FinancialProfile(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     currency_code: Mapped[str] = mapped_column(String(3), default="INR", nullable=False)
     start_cash_amount: Mapped[Optional[float]] = mapped_column(nullable=True)
     salary_day_of_month: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    next_income_in_days: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     business_mode_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
     user = relationship("User", back_populates="financial_profile")

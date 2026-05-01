@@ -9,19 +9,22 @@ import { commonStyles, theme } from "../../theme";
 export default function YouScreen() {
   const profile = useSessionStore((state) => state.profile);
   const displayName = useSessionStore((state) => state.displayName);
+  const userId = useSessionStore((state) => state.userId);
   const startFreshDemo = useSessionStore((state) => state.startFreshDemo);
+  const sessionCode = userId ? userId.slice(-6).toUpperCase() : "NONE";
 
   return (
-    <AppScreen title="Demo Setup" subtitle="Keep the prototype honest and guide people to the one useful moment.">
+    <AppScreen title="Setup" subtitle="Keep your money path clear and reset the sample workspace when you need a clean run.">
       <View style={[commonStyles.card, styles.callout]}>
-        <Text style={styles.calloutEyebrow}>What To Show</Text>
-        <Text style={styles.calloutTitle}>Use Home as the main demo screen.</Text>
-        <Text style={styles.calloutBody}>Tell people this is an early build, the statement history is sample data right now, and the most important action is updating cash reality to see the answer change.</Text>
+        <Text style={styles.calloutEyebrow}>Best Way To Use It</Text>
+        <Text style={styles.calloutTitle}>Use Home as the main screen.</Text>
+        <Text style={styles.calloutBody}>The clearest flow is sample statement history first, then a cash or due update so the answer changes in front of you.</Text>
       </View>
 
       <View style={[commonStyles.card, styles.card]}>
-        <Text style={styles.label}>Demo User</Text>
+        <Text style={styles.label}>Current User</Text>
         <Text style={styles.value}>{displayName}</Text>
+        <Text style={styles.help}>Test session: {sessionCode}</Text>
       </View>
       <View style={[commonStyles.card, styles.card]}>
         <Text style={styles.label}>User Type</Text>
@@ -33,13 +36,13 @@ export default function YouScreen() {
       </View>
 
       <View style={[commonStyles.card, styles.card]}>
-        <Text style={styles.label}>Demo Scope</Text>
-        <Text style={styles.help}>Ready for friend feedback on the core cashflow idea. Not yet ready for investor free exploration.</Text>
+        <Text style={styles.label}>Current Scope</Text>
+        <Text style={styles.help}>Ready for testing the core cashflow idea and seeing how the safe-to-spend answer reacts to real changes.</Text>
       </View>
 
       <Button label="Edit Setup" variant="secondary" onPress={() => router.push("/onboarding")} />
       <Button
-        label="Start Fresh Demo"
+        label="Start Fresh Setup"
         onPress={async () => {
           try {
             await startFreshDemo();

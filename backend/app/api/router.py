@@ -14,11 +14,13 @@ from app.api.routes import (
     loans,
     monthly_summaries,
     profile,
+    upcoming_dues,
 )
 
 api_router = APIRouter()
 api_router.include_router(auth.router)
 api_router.include_router(profile.router)
+api_router.include_router(upcoming_dues.router)
 api_router.include_router(ledger.router)
 api_router.include_router(loans.router)
 api_router.include_router(emi_payments.router)

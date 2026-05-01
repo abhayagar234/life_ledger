@@ -16,6 +16,7 @@ class ProfileOnboardingUpdate(BaseModel):
     tracking_scope: TrackingScope = TrackingScope.PERSONAL
     start_cash_amount: Optional[float] = None
     salary_day_of_month: Optional[int] = None
+    next_income_in_days: Optional[int] = None
     business_mode_enabled: bool = False
 
 
@@ -33,6 +34,7 @@ class ProfileRead(BaseModel):
     currency_code: str
     start_cash_amount: Optional[float]
     salary_day_of_month: Optional[int]
+    next_income_in_days: Optional[int]
     business_mode_enabled: bool
     created_at: datetime
     updated_at: datetime

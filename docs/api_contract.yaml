@@ -1,77 +1,84 @@
 openapi: 3.1.0
 info:
   title: Life Ledger MoneyOS API
-  version: 0.1.0
+  version: 0.2.0
   description: >
-    MVP mobile-friendly backend contract for MoneyOS. This contract keeps the API
-    simple and practical for onboarding, ledger tracking, loans, planning, and
-    future ingestion and coaching extensions.
+    Current early-access API contract for MoneyOS. The product is centered on
+    onboarding, sample/imported statement history, lightweight manual money
+    corrections, upcoming due creation, and cashflow summary generation.
 servers:
   - url: http://127.0.0.1:8000
 paths:
   /auth/demo-login:
     post:
-      summary: Create or reuse a demo user
+      summary: Create or reuse an early-access user session
   /profile:
     get:
-      summary: Fetch current user's financial profile
+      summary: Fetch current financial profile
   /profile/onboarding:
     put:
-      summary: Upsert onboarding and financial profile settings
+      summary: Save onboarding and financial profile settings
+  /demo/sample-statement:
+    post:
+      summary: Seed sample statement history for first-run demos
+  /cashflow/summary:
+    get:
+      summary: Fetch the current cashflow clarity summary
+  /cashflow/refresh:
+    post:
+      summary: Rebuild the cashflow summary for the current user
   /ledger-entries:
     get:
       summary: List manual ledger entries
     post:
       summary: Create a manual ledger entry
+  /upcoming-dues:
+    post:
+      summary: Add a named upcoming due to protect
+  /imports/files:
+    post:
+      summary: Upload a transaction file for normalization and ingestion
+      description: >
+        CSV normalization is implemented. XLSX and XLS readers are wired in and
+        require matching parser dependencies.
+
   /loans:
     get:
-      summary: List loans
+      summary: List lightweight loan and due records
     post:
-      summary: Create a loan
+      summary: Create a loan or due-style record
   /loans/{loan_id}:
     patch:
       summary: Update loan status or summary fields
   /emi-payments:
     get:
-      summary: List EMI payments
+      summary: List EMI or due payment records
     post:
-      summary: Create an EMI payment record
+      summary: Create an EMI or due payment record
   /emi-payments/{emi_payment_id}:
     patch:
-      summary: Update EMI payment status or paid amount
-  /budgets:
-    get:
-      summary: List budgets
-    post:
-      summary: Create a budget
-  /budgets/{budget_id}:
-    patch:
-      summary: Update a budget
-  /goals:
-    get:
-      summary: List goals
-    post:
-      summary: Create a goal
-  /goals/{goal_id}:
-    patch:
-      summary: Update a goal
-  /imports/files:
-    post:
-      summary: Upload a transaction file for ingestion
-      description: >
-        Upload and process a transaction file. CSV normalization is implemented.
-        XLSX and XLS readers are wired in and require the matching parser dependencies.
+      summary: Update EMI or due payment status
   /insights:
     get:
       summary: List lightweight insight cards
-      description: Stub endpoint returning demo-safe insight cards
+      description: Stub / partial surface, not a core trusted product path yet
   /coach/messages:
     post:
-      summary: Send a message to the MoneyOS coach
-      description: Stub endpoint returning a simple coaching reply
+      summary: Send a message to the coach endpoint
+      description: Stub / placeholder surface, not a core trusted product path yet
+  /budgets:
+    get:
+      summary: Legacy planning endpoint
+    post:
+      summary: Legacy planning endpoint
+  /goals:
+    get:
+      summary: Legacy planning endpoint
+    post:
+      summary: Legacy planning endpoint
   /monthly-summaries/{year}/{month}:
     get:
-      summary: Build or fetch a monthly summary
+      summary: Legacy monthly summary endpoint
 components:
   parameters:
     userId:
@@ -80,16 +87,18 @@ components:
       required: false
       schema:
         type: string
-      description: Demo user id for auth-light development
+      description: Current auth-light user identifier for development
 tags:
   - name: auth
   - name: profile
+  - name: cashflow
   - name: ledger entries
+  - name: upcoming dues
+  - name: imports
   - name: loans
   - name: emi payments
-  - name: budgets
-  - name: goals
-  - name: imports
   - name: insights
   - name: coach
+  - name: budgets
+  - name: goals
   - name: monthly summaries

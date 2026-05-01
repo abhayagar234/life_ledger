@@ -8,6 +8,8 @@ import type {
   LedgerEntryCreate,
   LedgerEntryRead,
   MonthlySummaryRead,
+  UpcomingDueCreate,
+  UpcomingDueRead,
   ProfileOnboardingUpdate,
   ProfileRead,
   SpendingInsightsResponse
@@ -84,5 +86,13 @@ export function loadSampleStatement(userId: string) {
   return apiRequest<DemoActionResponse>("/demo/sample-statement", {
     method: "POST",
     userId
+  });
+}
+
+export function createUpcomingDue(userId: string, payload: UpcomingDueCreate) {
+  return apiRequest<UpcomingDueRead>("/upcoming-dues", {
+    method: "POST",
+    userId,
+    body: JSON.stringify(payload)
   });
 }

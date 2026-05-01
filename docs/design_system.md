@@ -2,92 +2,119 @@
 
 ## Goal
 
-Provide a lightweight design system for a simple, premium-feeling MVP without adding unnecessary complexity.
+Provide a calm, trustworthy visual system for a survival-clarity app.
 
-## Stack
+The app should feel:
 
-- React Native + Expo
-- TypeScript
-- NativeWind preferred
+- practical
+- protective
+- easy to scan
+- non-judgmental
+
+It should not feel like:
+
+- a chart-heavy budgeting app
+- a bank dashboard
+- a finance toy
 
 ## Visual Principles
 
-- clean and calm
-- premium through restraint, not decoration
-- clear hierarchy
-- simple language
-- large touch targets
-- icons always paired with labels
+- answer first, details later
+- strong hierarchy
+- low cognitive load
+- large tap targets
+- plain language paired with visual cues
+- no fear-heavy warning design
+
+## Home-Screen Hierarchy
+
+Preferred order:
+
+1. status line
+2. hero money number
+3. fuel gauge
+4. named watchouts / dues
+5. supporting metrics
+6. explanation
+7. secondary actions
 
 ## Color Direction
 
-Use a warm, grounded palette that feels trustworthy and practical.
+Use a grounded, practical palette:
 
-Suggested tokens:
+- `safe`: green
+- `tight`: yellow / amber
+- `slow down`: red
+- warm neutrals for surfaces and text
 
-- `bg`: soft sand
-- `surface`: white
-- `text`: deep slate
-- `muted`: warm gray
-- `primary`: deep teal
-- `success`: leaf green
-- `warning`: amber
-- `danger`: brick red
+Important rule:
 
-## Type Direction
+- red should communicate protection and slowdown, not panic
 
-- use a clean sans serif
-- strong size contrast between title, amount, and body text
+## Typography
+
+- strong contrast between hero amount and body text
 - avoid tiny helper text
+- plain, readable sans-serif
 
-Suggested scale:
+## Components
 
-- display amount
-- screen title
-- section title
-- body
-- caption
+### Persona Banner
 
-## Spacing
+- small, warm, identity-reinforcing
+- should not compete with the money answer
 
-- 4, 8, 12, 16, 24, 32 scale
-- cards should breathe
-- avoid cramped lists
+### Hero Number
 
-## Shape
+- the strongest number on the screen
+- either:
+  - `Safe to spend`
+  - or `Still to protect`
 
-- rounded cards
-- rounded input fields
-- rounded action tiles
+### Fuel Gauge
 
-## Component Rules
+- immediate visual state:
+  - green = safe
+  - yellow = getting tight
+  - red = slow down
 
-- buttons must be easy to tap with one hand
-- cards should have one clear purpose
-- forms should avoid more than 4 visible fields at a time
-- icons should clarify meaning, not decorate
+### Supporting Metric Cards
 
-## Icon Guidance
+Should feel secondary.
 
-Suggested icon concepts:
+Examples:
 
-- income: arrow down into wallet
-- expense: arrow up from wallet
-- cash: wallet or hand
-- loan: handshake or document
-- EMI: calendar + rupee
-- insights: pie or bars
-- coach: lightbulb or guide
+- upcoming dues
+- daily needs covered
+- bank money seen this cycle
+- cash on hand
 
-## Motion
+### Watchouts
 
-- use light fades and short slide-ups
-- avoid flashy animation
-- use motion only to support clarity
+Should be:
+
+- specific
+- calm
+- actionable
+
+Avoid vague warnings like:
+
+- `bills coming`
+
+Prefer:
+
+- `Jio Rs 349 on April 25. Keep this aside first.`
+
+## Interaction Principles
+
+- one primary CTA at a time
+- corrections should feel lightweight
+- refresh should be implicit where possible
+- every meaningful money action should visibly change the answer
 
 ## Accessibility
 
-- support high contrast text
-- do not rely on color alone for status
-- all important icons need labels
-- keep primary tap targets large
+- do not rely on color alone
+- large hit targets
+- labels should be readable without financial literacy
+- icons and emoji should support meaning, not replace text

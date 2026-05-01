@@ -1,15 +1,21 @@
-# Life Ledger MoneyOS MVP Product Blueprint
+# Life Ledger MoneyOS Product Spec
 
 ## Product Summary
 
-MoneyOS is the first module of Life Ledger. It is a mobile-first money app for Indians who need a simple way to track income, expenses, cash, loans, EMI, and monthly money status without relying on live bank integrations.
+MoneyOS is a mobile-first financial survival app for Indian households operating under scarcity. It is not primarily a budgeting tool, expense tracker, or investment app.
 
-The MVP is meant to be good enough for a real demo with family and friends. It should feel useful on day one, especially for users who:
+Its first job is to answer:
 
-- mix cash and digital spending
-- have irregular income
-- manage family money for others
-- are not comfortable with complex finance apps
+- `Will my money last till the next income?`
+- `What must I protect first?`
+- `How much is actually safe to spend right now?`
+
+The current build is intended to be believable in unguided demos with family and friends, especially for users who:
+
+- mix cash, UPI, and credit card spending
+- have low tolerance for complex finance apps
+- manage household dues mentally
+- need calm, practical money clarity rather than reports
 
 ## Target Users
 
@@ -25,183 +31,220 @@ Primary user types:
 
 Users should be able to:
 
-- record income
-- record expense
-- record cash balance or cash adjustment
-- record a loan or money due
-- record EMI and interest payments
-- upload CSV exports from bank, card, or wallet statements
-- see grouped spending by category
-- see a monthly summary
-- receive simple budgeting advice
+- complete setup quickly without finance jargon
+- land on a useful home screen immediately
+- understand safe-to-spend and safe-till date
+- add or correct important money reality with minimal effort
+- protect important dues before spending freely
+- combine imported statement history with lightweight manual corrections
+- see named watchouts when something important is coming
 
 ## Product Principles
 
 - mobile-first
 - low-literacy friendly
-- plain language over finance jargon
-- icons and large tap areas over dense forms
-- cash-first, not bank-first
-- irregular income is normal, not an edge case
-- AI is a coach, not the ledger itself
-- demo quality should favor clarity and usefulness over breadth
+- one clear answer before any detail
+- action-oriented, never doom-oriented
+- cash + online + card together
+- statement history should do the heavy lifting
+- manual entry should be lightweight, not full bookkeeping
+- trust before monetization
 
 ## Main User Pain Points
 
-- users forget small cash spending
-- many users do not know their real cash-on-hand amount
-- income may be daily, weekly, seasonal, or mixed
-- loans and EMI are often tracked in memory, paper, or chat
-- finance apps often assume steady salary and auto-sync
-- current tools feel too complex, English-heavy, or judgmental
+- bank balance looks larger than true free money
+- cash and online spending are mixed in real life
+- upcoming dues are remembered too late
+- credit card spending hides a future hit
+- daily-needs spending is real but hard to mentally reserve
+- finance tools feel too complex, judgmental, or built for richer users
 
 ## MVP Value Proposition
 
 MoneyOS should answer these questions simply:
 
-- how much money came in?
-- how much money went out?
-- how much cash is left?
-- what loan or EMI is due?
-- where is most spending happening?
-- what is one simple thing I should do next?
+- `Am I okay till the next income?`
+- `How much is safe to spend?`
+- `What dues should I protect first?`
+- `What changed after today’s cash / online / card spend?`
+- `What looks forgotten or risky in my recent statement history?`
 
-## v1 Scope
+## Current Product Scope
 
-### Included In v1
+### Implemented
 
-- persona-based onboarding
-- manual income entry
-- manual expense entry
-- manual transfer and cash adjustment entry
-- cash account tracking
-- loan tracking for borrowed and lent money
-- EMI tracking with due date and payment status
-- CSV upload from external exports
-- backend normalization and deduplication of imported rows
-- rule-based category grouping
-- monthly summary view
-- basic budgets by category or spending bucket
-- simple AI budgeting and coaching guidance
+- language-first onboarding
+- persona-aware onboarding
+- next-money horizon selection
+- sample statement autoload after onboarding
+- home screen with:
+  - status headline
+  - hero safe-to-spend or still-to-protect number
+  - fuel gauge
+  - named `Keep Aside First` due list with paid / partial / pending state
+  - supporting metrics
+  - freshness messaging
+  - explanations and watchouts
+- manual money updates:
+  - set cash to what you have now
+  - big spend
+  - cash received
+  - due payment from named dues
+- source-aware manual updates:
+  - cash
+  - online / UPI
+  - credit card
+  - split cash + online
+- add upcoming due flow
+- profile-aware sample data:
+  - salaried
+  - daily wage
+  - farmer / seasonal
+  - business / self-employed
+  - family manager
+- CSV import foundation
+- backend normalization and deduplication
+- rule-based categorization
+- cashflow engine with due protection and daily-needs protection
 
-### Explicit Non-Goals For v1
+### Not Fully Built Yet
 
-- live bank integrations
-- UPI integrations
-- Account Aggregator integrations
-- health module
-- investment tracking
-- tax filing
+- real auth
+- true production-ready CSV import UX
+- full editable due management from Home
+- future-month recurring due materialization
+- real coach product surface
+- opportunities / subsidies layer
+- full trust-surface localization across every visible screen
+- live bank or Account Aggregator connections
+
+## Explicit Non-Goals Right Now
+
+- full budgeting workflows
+- savings goals
+- net worth tracking
+- investment onboarding
+- generic financial news feed
+- full business accounting
+- tax workflows
 - insurance workflows
-- full accounting for businesses
-- OCR-first document ingestion
-- multi-user family collaboration
-- custom ML training or fine-tuning
 
 ## Feature Priority
 
 ### Must
 
-- choose user type during onboarding
-- add income manually
-- add expense manually
-- create and view cash balance
-- create and track a loan
-- create and track EMI or interest obligation
-- upload CSV file
-- normalize imported transactions into one format
-- deduplicate obvious repeated imports
-- auto-assign or suggest category groups using simple rules
-- show monthly money summary
-- show top spending categories
-- give simple budget advice in plain language
+- complete setup quickly
+- auto-land on a believable home experience
+- show safe-to-spend and protected dues clearly
+- let user update cash / online / card reality
+- let user add a missing due
+- keep the answer fresh and visibly time-aware
 
 ### Should
 
-- adaptive home screen by persona
-- quick-add shortcuts like “earned today” or “spent cash”
-- flag uncertain imported rows for review
-- budget warning when a category is crossing limit
-- simple reminders for EMI and loan due dates
-- coaching cards that explain recent spending behavior
+- surface likely recurring dues from imported data
+- show forgotten subscriptions as a stronger wow moment
+- let users mark named dues paid from a visible due list
+- let users correct due names / amounts / dates
+- improve trust through specific watchouts and clear explanations
+- make recurring dues truly recur across future cycles
 
 ### Later
 
-- bilingual or multilingual UI
-- household shared access
-- OCR on bills or passbooks
-- recurring transaction templates
-- richer insights and trends
+- bilingual UI
+- household collaboration
+- opportunities / scheme recommendations
+- richer subscription controls
 - live sync with financial accounts
+- first surplus-to-save recommendations
 
 ## Demo-First UX Requirements
 
-- first transaction should be possible in under one minute
-- one clear primary action on each main screen
-- labels should use simple money words like `income`, `expense`, `cash`, `loan`, `due`
-- monthly summary should be understandable without charts
-- CSV import should not be required to get value
-- AI should appear only after enough data exists to say something useful
+- the first useful answer should appear without extra thinking
+- one primary action at a time
+- no “prototype” or “demo” trust-killing language in core user flow
+- named dues are more useful than abstract totals
+- watchouts must be specific when possible
+- safe-to-spend should update immediately after meaningful actions
+- stale data should be visible, not hidden
 
-## MVP Screens
+## Final Pre-Demo Checklist
 
-- welcome and trust screen
+If we had to pick only three final changes before a serious demo, they are:
+
+1. full Home localization cleanup
+   - remove mixed English from the main trust path
+   - especially Home labels, helper text, due/source labels, and action copy
+2. true-or-honest recurring dues behavior
+   - either make recurring dues actually recur
+   - or remove wording that implies automatic monthly carry-forward
+3. flawless onboarding-to-populated-home flow
+   - setup finishes
+   - sample autoloads
+   - Home opens with believable data every time
+   - no empty or confusing intermediate step
+
+These three are the highest leverage because they directly affect:
+
+- trust
+- clarity
+- demo smoothness
+
+## Current Main Screens
+
+- welcome
+- language selection
 - user type selection
-- simple setup questions
+- income rhythm
+- next money horizon
+- cash setup
+- final setup + sample autoload
 - home dashboard
-- add income
-- add expense
-- cash balance / cash adjustment
-- loans and EMI tracker
-- CSV import flow
-- transactions list
-- category summary
-- monthly summary
-- budget advice / coach card screen
+- add cash / due update
+- add upcoming due
+- import statement
+- setup
 
 ## Acceptance Criteria
 
 ### Product Acceptance
 
 - a new user can complete onboarding in under 2 minutes
-- a new user can add income, expense, and cash entries without training
-- a user can create at least one loan or EMI entry and view its status
-- a user can import a CSV and see normalized transactions
-- repeated CSV import of the same file does not double-count obvious duplicates
-- grouped spending and monthly summary are visible after data entry
-- budget advice is written in plain, short sentences
+- the app reaches a useful home state automatically after setup
+- the sample statement should feel believable for the selected user profile
+- a user can update money reality and see the answer change immediately
+- a user can add a due that affects `Upcoming Dues` and `Safe To Spend`
+- a user can understand the main answer without needing charts
 
 ### Demo Acceptance
 
-- a family or friend can understand the main flow without explanation
-- the app is still useful even if no bank data is connected
-- each target persona sees a believable first-run experience
-- the product feels focused, not overloaded
+- a family or friend can understand the app without live explanation
+- the app feels honest, not overloaded
+- imported/sample history plus one manual update creates an obvious value moment
+- the product feels like a survival-clarity tool, not a generic budgeting app
 
 ## Success Criteria
 
-The MVP is successful if demo users can:
+The current milestone is successful if demo users can:
 
 1. pick a persona that feels close to their life
-2. add a few real money records quickly
-3. understand cash left, monthly spending, and upcoming dues
-4. see at least one useful budget or coaching suggestion
-5. feel the app is simple enough to keep using
+2. reach a believable home screen quickly
+3. understand what is safe, what is due, and what needs protection
+4. change reality once and see the answer update
+5. trust the app enough to tell us what is missing
 
 ## Risks To Avoid
 
-- over-designing for future integrations
-- building too many account types early
-- making onboarding too long
-- relying on AI before the ledger is solid
-- showing complex graphs before clear summaries
+- over-explaining finance logic before showing the answer
+- relying on too many manual entries
+- hiding dues inside totals only
+- making warning copy feel alarming or judgmental
+- overpromising import, auth, or AI capabilities
 
-## Recommended Build Order
+## Recommended Next Build Order
 
-1. lock onboarding and core screens
-2. lock data model and API contract
-3. build manual ledger and cash tracking
-4. build loans and EMI tracking
-5. build CSV import, normalization, and deduplication
-6. add category grouping and monthly summary
-7. layer in budget advice and simple AI coaching
+1. stronger imported recurring-due surfacing
+2. full trust-surface localization
+3. forgotten subscriptions as a dedicated card
+4. real auth
+5. broader CSV import support

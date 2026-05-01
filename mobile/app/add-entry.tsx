@@ -1,10 +1,11 @@
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Alert, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { AppScreen } from "../components/AppScreen";
 import { Button } from "../components/Button";
 import { ChoiceCard } from "../components/ChoiceCard";
+import { t } from "../i18n";
 import { createLedgerEntry } from "../services/api/moneyos";
 import { useSessionStore } from "../store/session";
 import type { LedgerEntryCreate } from "../services/api/types";
@@ -13,8 +14,8 @@ import { theme } from "../theme";
 const entryOptions = [
   {
     key: "cash_set",
-    title: "Cash In Hand",
-    subtitle: "Tell us what cash is actually with you right now",
+    title: "Set Cash On Hand",
+    subtitle: "Reset cash to what is actually with you right now",
     icon: "wallet-outline"
   },
   {
@@ -28,16 +29,17 @@ const entryOptions = [
     title: "Cash Received",
     subtitle: "Informal income, cash sale, or money collected outside the bank",
     icon: "add-circle-outline"
-  },
-  {
-    key: "due_paid",
-    title: "Due Paid",
-    subtitle: "Mark EMI, bill, or rent as paid so the runway stays honest",
-    icon: "receipt-outline"
   }
 ] as const;
 
-type EntryOptionKey = (typeof entryOptions)[number]["key"];
+const duePaidOption = {
+  key: "due_paid",
+  title: "Due Paid",
+  subtitle: "Mark EMI, bill, or rent as paid so the runway stays honest",
+  icon: "receipt-outline"
+} as const;
+
+type EntryOptionKey = (typeof entryOptions)[number]["key"] | typeof duePaidOption.key;
 type SourceOptionKey = "cash" | "online" | "card" | "split";
 
 const sourceOptions: Array<{
@@ -56,7 +58,19 @@ function todayIso() {
   return new Date().toISOString().slice(0, 10);
 }
 
-function buildPayload(option: EntryOptionKey, amount: number, note: string, source: Exclude<SourceOptionKey, "split">): LedgerEntryCreate {
+type DuePrefill = {
+  dueName?: string;
+  emiPaymentId?: string;
+  dueKey?: string;
+};
+
+function buildPayload(
+  option: EntryOptionKey,
+  amount: number,
+  note: string,
+  source: Exclude<SourceOptionKey, "split">,
+  duePrefill?: DuePrefill
+): LedgerEntryCreate {
   if (option === "cash_set") {
     return {
       entry_type: "cash_adjustment",
@@ -88,9 +102,15 @@ function buildPayload(option: EntryOptionKey, amount: number, note: string, sour
       entry_date: todayIso(),
       account_type: source === "online" ? "bank" : "cash",
       cash_direction: "out",
+      counterparty_name: duePrefill?.dueName ?? null,
       category_code: "bills",
       description: note || (source === "online" ? "Manual due paid from bank or UPI" : "Manual due paid in cash"),
-      source_label: source === "online" ? "mobile_quick_bank" : "mobile_quick_cash"
+      source_label: duePrefill?.emiPaymentId
+        ? source === "online"
+          ? "mobile_quick_bank"
+          : "mobile_quick_cash"
+        : duePrefill?.dueKey ?? (source === "online" ? "mobile_quick_bank" : "mobile_quick_cash"),
+      emi_payment_id: duePrefill?.emiPaymentId ?? null
     };
   }
 
@@ -117,35 +137,65 @@ function buildPayloads(
   amount: number,
   note: string,
   source: SourceOptionKey,
-  splitCashAmount: number
+  splitCashAmount: number,
+  duePrefill?: DuePrefill
 ): LedgerEntryCreate[] {
   if (source !== "split") {
-    return [buildPayload(option, amount, note, source)];
+    return [buildPayload(option, amount, note, source, duePrefill)];
   }
 
   const onlineAmount = Math.max(amount - splitCashAmount, 0);
   const payloads: LedgerEntryCreate[] = [];
   if (splitCashAmount > 0) {
-    payloads.push(buildPayload(option, splitCashAmount, note, "cash"));
+    payloads.push(buildPayload(option, splitCashAmount, note, "cash", duePrefill));
   }
   if (onlineAmount > 0) {
-    payloads.push(buildPayload(option, onlineAmount, note, "online"));
+    payloads.push(buildPayload(option, onlineAmount, note, "online", duePrefill));
   }
   return payloads;
 }
 
 export default function AddEntryScreen() {
+  const params = useLocalSearchParams<{
+    mode?: string;
+    amount?: string;
+    note?: string;
+    dueName?: string;
+    dueKey?: string;
+    emiPaymentId?: string;
+  }>();
   const userId = useSessionStore((state) => state.userId);
+  const language = useSessionStore((state) => state.onboardingDraft.preferredLanguage);
   const refreshDashboard = useSessionStore((state) => state.refreshDashboard);
   const currentCashOnHand = useSessionStore((state) => state.dashboard.cashflowSummary?.cash_on_hand ?? 0);
-  const [selected, setSelected] = useState<EntryOptionKey>("cash_set");
+  const initialMode =
+    params.mode === "cash_received" || params.mode === "cash_spent" || params.mode === "due_paid" || params.mode === "cash_set"
+      ? params.mode
+      : "cash_set";
+  const [selected, setSelected] = useState<EntryOptionKey>(initialMode);
   const [source, setSource] = useState<SourceOptionKey>("cash");
   const [splitCashAmount, setSplitCashAmount] = useState("");
-  const [amount, setAmount] = useState("");
-  const [note, setNote] = useState("");
+  const [amount, setAmount] = useState(typeof params.amount === "string" ? params.amount : "");
+  const [note, setNote] = useState(typeof params.note === "string" ? params.note : "");
   const [saving, setSaving] = useState(false);
+  const duePrefill = useMemo(
+    () => ({
+      dueName: typeof params.dueName === "string" ? params.dueName : undefined,
+      emiPaymentId: typeof params.emiPaymentId === "string" ? params.emiPaymentId : undefined,
+      dueKey: typeof params.dueKey === "string" ? params.dueKey : undefined
+    }),
+    [params.dueKey, params.dueName, params.emiPaymentId]
+  );
 
-  const selectedOption = useMemo(() => entryOptions.find((option) => option.key === selected) ?? entryOptions[0], [selected]);
+  const visibleEntryOptions = useMemo(
+    () => (duePrefill.dueName ? [...entryOptions, duePaidOption] : entryOptions),
+    [duePrefill.dueName]
+  );
+
+  const selectedOption = useMemo(
+    () => visibleEntryOptions.find((option) => option.key === selected) ?? visibleEntryOptions[0],
+    [selected, visibleEntryOptions]
+  );
   const availableSourceOptions = useMemo(() => {
     if (selected === "cash_spent") {
       return sourceOptions;
@@ -165,9 +215,20 @@ export default function AddEntryScreen() {
     }
   }, [availableSourceOptions, source]);
 
+  useEffect(() => {
+    if (
+      params.mode === "cash_received" ||
+      params.mode === "cash_spent" ||
+      params.mode === "due_paid" ||
+      params.mode === "cash_set"
+    ) {
+      setSelected(params.mode);
+    }
+  }, [params.mode]);
+
   const helperText = useMemo(() => {
     if (selected === "cash_set") {
-      return "Use this when you want to reset the app to the real cash amount with you now.";
+      return "Use this when you want to reset the app to the real cash amount with you now. If new money came in, use Cash Received instead.";
     }
     if (selected === "cash_spent") {
       if (source === "online") {
@@ -186,6 +247,9 @@ export default function AddEntryScreen() {
         ? "Use this for money received into bank or UPI that you want reflected before the next import."
         : "Good for informal income, cash collections, or money received outside the bank.";
     }
+    if (duePrefill.dueName) {
+      return `Mark ${duePrefill.dueName} as paid so it moves out of pending dues and the safe-to-spend answer updates honestly.`;
+    }
     if (source === "split") {
       return "Use this when a due was paid partly in cash and partly online, so both buckets stay honest.";
     }
@@ -195,15 +259,15 @@ export default function AddEntryScreen() {
   }, [selected, source]);
 
   return (
-    <AppScreen title="Update Cash and Dues" subtitle="Import is the backbone. These quick updates fill the missing cash and paid-due details.">
-      {entryOptions.map((option) => (
+    <AppScreen title={t(language, "updateCashDues")} subtitle={t(language, "updateCashDuesSubtitle")}>
+      {visibleEntryOptions.map((option) => (
         <ChoiceCard
           key={option.key}
           title={option.title}
           subtitle={option.subtitle}
           icon={option.icon}
           selected={selected === option.key}
-          onPress={() => setSelected(option.key)}
+          onPress={() => setSelected(option.key as EntryOptionKey)}
         />
       ))}
 
@@ -226,23 +290,31 @@ export default function AddEntryScreen() {
 
         {source === "split" ? (
           <View style={styles.field}>
-            <Text style={styles.label}>How much was paid in cash?</Text>
+            <Text style={styles.label}>
+              {selected === "cash_received" ? "How much came in cash?" : "How much was paid in cash?"}
+            </Text>
             <TextInput
               keyboardType="numeric"
               value={splitCashAmount}
               onChangeText={setSplitCashAmount}
-              placeholder={`Cash available now: Rs ${Math.max(Math.round(currentCashOnHand), 0).toLocaleString("en-IN")}`}
+              placeholder={
+                selected === "cash_received"
+                  ? "Example: 500"
+                  : `Cash available now: Rs ${Math.max(Math.round(currentCashOnHand), 0).toLocaleString("en-IN")}`
+              }
               placeholderTextColor={theme.colors.textMuted}
               style={styles.input}
             />
             <Text style={styles.noteText}>
-              The rest will be treated as online / UPI automatically.
+              {selected === "cash_received"
+                ? "The rest will be treated as online / UPI money received."
+                : "The rest will be treated as online / UPI automatically."}
             </Text>
           </View>
         ) : null}
 
         <View style={styles.field}>
-          <Text style={styles.label}>{selectedOption.title}</Text>
+          <Text style={styles.label}>{duePrefill.dueName && selected === "due_paid" ? duePrefill.dueName : selectedOption.title}</Text>
           <TextInput
             keyboardType="numeric"
             value={amount}
@@ -271,7 +343,7 @@ export default function AddEntryScreen() {
       </View>
 
       <Button
-        label={saving ? "Saving..." : "Save And Refresh"}
+        label={saving ? t(language, "saving") : t(language, "saveRefresh")}
         disabled={saving || !amount.trim()}
         onPress={async () => {
           if (!userId) {
@@ -288,14 +360,24 @@ export default function AddEntryScreen() {
           const numericSplitCashAmount = splitCashAmount.trim() ? Number(splitCashAmount) : 0;
           if (source === "split") {
             if (!Number.isFinite(numericSplitCashAmount) || numericSplitCashAmount <= 0) {
-              Alert.alert("Enter cash amount", "Tell us how much of this payment went in cash.");
+              Alert.alert(
+                "Enter cash amount",
+                selected === "cash_received"
+                  ? "Tell us how much of this money came in cash."
+                  : "Tell us how much of this payment went in cash."
+              );
               return;
             }
             if (numericSplitCashAmount >= numericAmount) {
-              Alert.alert("Use cash only instead", "If the full amount was paid in cash, choose Cash instead of split.");
+              Alert.alert(
+                "Use cash only instead",
+                selected === "cash_received"
+                  ? "If the full amount came in cash, choose Cash instead of split."
+                  : "If the full amount was paid in cash, choose Cash instead of split."
+              );
               return;
             }
-            if (numericSplitCashAmount > currentCashOnHand) {
+            if (selected !== "cash_received" && numericSplitCashAmount > currentCashOnHand) {
               Alert.alert("Cash is short", "The cash part is more than your cash on hand. Lower the cash part or choose Online / UPI.");
               return;
             }
@@ -311,7 +393,7 @@ export default function AddEntryScreen() {
 
           setSaving(true);
           try {
-            const payloads = buildPayloads(selected, numericAmount, note.trim(), source, numericSplitCashAmount);
+            const payloads = buildPayloads(selected, numericAmount, note.trim(), source, numericSplitCashAmount, duePrefill);
             for (const payload of payloads) {
               await createLedgerEntry(userId, payload);
             }

@@ -12,7 +12,7 @@ export default function IndexScreen() {
 
   if (!hydrated || loading) {
     return (
-      <AppScreen title="Starting MoneyOS" subtitle="Preparing your demo workspace.">
+      <AppScreen title="Starting MoneyOS" subtitle="Preparing your workspace.">
         <EmptyStateCard title="One moment" body="We are loading your setup and the latest dashboard." />
       </AppScreen>
     );

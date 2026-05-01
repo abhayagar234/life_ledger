@@ -32,6 +32,7 @@ export type ProfileRead = {
   currency_code: string;
   start_cash_amount: number | null;
   salary_day_of_month: number | null;
+  next_income_in_days: number | null;
   business_mode_enabled: boolean;
   created_at: string;
   updated_at: string;
@@ -47,6 +48,7 @@ export type ProfileOnboardingUpdate = {
   tracking_scope: TrackingScope;
   start_cash_amount?: number | null;
   salary_day_of_month?: number | null;
+  next_income_in_days?: number | null;
   business_mode_enabled: boolean;
 };
 
@@ -101,6 +103,7 @@ export type InsightCard = {
 
 export type CashflowSummary = {
   as_of_date: string;
+  latest_activity_date: string | null;
   status: string;
   headline: string;
   plain_summary: string;
@@ -121,6 +124,20 @@ export type CashflowSummary = {
   confidence: string;
   explanations: string[];
   watchouts: string[];
+  protected_due_items: ProtectedDueItem[];
+};
+
+export type ProtectedDueItem = {
+  due_key: string;
+  name: string;
+  amount: number;
+  due_date: string;
+  status: "pending" | "partial" | "paid";
+  amount_paid: number;
+  remaining_amount: number;
+  source_type: string;
+  emi_payment_id: string | null;
+  loan_id: string | null;
 };
 
 export type LedgerEntryCreate = {
@@ -164,4 +181,23 @@ export type LedgerEntryRead = {
 export type DemoActionResponse = {
   status: string;
   message: string;
+};
+
+export type UpcomingDueCreate = {
+  name: string;
+  amount: number;
+  due_date: string;
+  repeat_monthly?: boolean;
+  notes?: string | null;
+};
+
+export type UpcomingDueRead = {
+  loan_id: string;
+  emi_payment_id: string;
+  name: string;
+  amount: number;
+  due_date: string;
+  repeat_monthly: boolean;
+  notes: string | null;
+  created_at: string;
 };

@@ -4,29 +4,32 @@ import { useMemo } from "react";
 import { AppScreen } from "../../components/AppScreen";
 import { Button } from "../../components/Button";
 import { ChoiceCard } from "../../components/ChoiceCard";
-import { incomePatternOptions } from "../../features/onboarding/options";
+import { getIncomePatternOptions } from "../../features/onboarding/options";
+import { t } from "../../i18n";
 import { useSessionStore } from "../../store/session";
 
 export default function IncomeRhythmScreen() {
   const selected = useSessionStore((state) => state.onboardingDraft.incomePattern);
   const userType = useSessionStore((state) => state.onboardingDraft.userType);
+  const language = useSessionStore((state) => state.onboardingDraft.preferredLanguage);
   const setDraft = useSessionStore((state) => state.setDraft);
+  const incomePatternOptions = getIncomePatternOptions(language);
   const subtitle = useMemo(() => {
     if (userType === "daily_wage") {
-      return "Pick the rhythm that feels closest to how work money usually comes in.";
+      return t(language, "incomeDailySubtitle");
     }
     if (userType === "farmer_seasonal") {
-      return "Choose the pattern that matches harvest, contract, or seasonal income.";
+      return t(language, "incomeFarmerSubtitle");
     }
     if (userType === "business_self_employed") {
-      return "This helps us handle shop sales, side income, and uneven cashflow better.";
+      return t(language, "incomeBusinessSubtitle");
     }
-    return "This helps us show the right summary and reminders.";
-  }, [userType]);
+    return t(language, "incomeDefaultSubtitle");
+  }, [language, userType]);
 
   return (
     <AppScreen
-      title="How does money usually come in?"
+      title={t(language, "incomeTitle")}
       subtitle={subtitle}
     >
       {incomePatternOptions.map((option) => (
@@ -44,7 +47,7 @@ export default function IncomeRhythmScreen() {
           }
         />
       ))}
-      <Button label="Continue" onPress={() => router.push("/onboarding/cash-setup")} disabled={!selected} />
+      <Button label={t(language, "continue")} onPress={() => router.push("/onboarding/next-money")} disabled={!selected} />
     </AppScreen>
   );
 }
