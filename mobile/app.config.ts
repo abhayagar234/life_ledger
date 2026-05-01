@@ -34,7 +34,10 @@ const config: ExpoConfig = {
   },
   extra: {
     appVariant,
-    apiBaseUrl: process.env.EXPO_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000"
+    apiBaseUrl: process.env.EXPO_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000",
+    eas: {
+      projectId: "2dd11dbe-a972-43a5-95b5-e482694cf139"
+    }
   }
 };
 
