@@ -23,6 +23,7 @@ const config: ExpoConfig = {
   },
   plugins: ["expo-router"],
   android: {
+    allowBackup: false,
     package: `com.lifeledger.moneyos${bundleSuffix}`,
     adaptiveIcon: {
       backgroundColor: "#F5EFE6"

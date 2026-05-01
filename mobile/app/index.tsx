@@ -7,6 +7,7 @@ import { useSessionStore } from "../store/session";
 export default function IndexScreen() {
   const hydrated = useSessionStore((state) => state.hydrated);
   const loading = useSessionStore((state) => state.loading);
+  const onboardingCompleted = useSessionStore((state) => state.onboardingCompleted);
   const profile = useSessionStore((state) => state.profile);
   const error = useSessionStore((state) => state.error);
 
@@ -26,7 +27,7 @@ export default function IndexScreen() {
     );
   }
 
-  if (!profile) {
+  if (!profile || !onboardingCompleted) {
     return <Redirect href="/onboarding" />;
   }
 

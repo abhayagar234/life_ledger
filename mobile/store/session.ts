@@ -51,6 +51,7 @@ type SessionStore = {
   hydrated: boolean;
   loading: boolean;
   savingOnboarding: boolean;
+  onboardingCompleted: boolean;
   error: string | null;
   userId: string | null;
   displayName: string;
@@ -114,6 +115,7 @@ export const useSessionStore = create<SessionStore>()(
       hydrated: false,
       loading: false,
       savingOnboarding: false,
+      onboardingCompleted: false,
       error: null,
       userId: null,
       displayName: "MoneyOS User",
@@ -157,6 +159,7 @@ export const useSessionStore = create<SessionStore>()(
           set((currentState) => ({
             profile,
             displayName,
+            onboardingCompleted: currentState.onboardingCompleted && Boolean(profile),
             onboardingDraft: profile
               ? {
                   displayName,
@@ -190,6 +193,7 @@ export const useSessionStore = create<SessionStore>()(
         set({
           loading: true,
           error: null,
+          onboardingCompleted: false,
           userId: null,
           profile: null,
           dashboard: {
@@ -285,6 +289,7 @@ export const useSessionStore = create<SessionStore>()(
           const profile = await upsertProfile(userId, payload);
           set({
             profile,
+            onboardingCompleted: true,
             displayName: payload.display_name
           });
           await loadSampleStatement(userId);
@@ -304,6 +309,7 @@ export const useSessionStore = create<SessionStore>()(
       partialize: (state) => ({
         userId: state.userId,
         displayName: state.displayName,
+        onboardingCompleted: state.onboardingCompleted,
         profile: state.profile,
         onboardingDraft: state.onboardingDraft
       }),
