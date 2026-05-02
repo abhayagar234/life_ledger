@@ -28,6 +28,10 @@ class CashflowSummaryResponse(BaseModel):
     next_income_date: date | None
     effective_available_money: float
     liquid_balance: float
+    detected_bank_balance: float = 0
+    working_bank_balance: float = 0
+    bank_balance_needs_confirmation: bool = False
+    bank_balance_source: str = "detected"
     cash_on_hand: float
     cash_is_stale: bool = False
     upcoming_dues_total: float

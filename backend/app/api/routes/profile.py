@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_current_user, get_db
 from app.models.financial_profile import FinancialProfile
 from app.models.user import User
-from app.schemas.profile import ProfileOnboardingUpdate, ProfileRead
+from app.schemas.profile import ProfileBankBalanceUpdate, ProfileOnboardingUpdate, ProfileRead
 
 router = APIRouter(prefix="/profile", tags=["profile"])
 
@@ -56,6 +56,31 @@ def upsert_profile_onboarding(
     profile.updated_at = datetime.utcnow()
 
     db.add(current_user)
+    db.commit()
+    db.refresh(profile)
+    return profile
+
+
+@router.put("/bank-balance", response_model=ProfileRead)
+def update_bank_balance(
+    payload: ProfileBankBalanceUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    profile = db.query(FinancialProfile).filter(FinancialProfile.user_id == current_user.id).first()
+    if profile is None:
+        profile = FinancialProfile(
+            user_id=current_user.id,
+            user_type="salaried",
+            income_pattern="monthly",
+        )
+        db.add(profile)
+
+    profile.bank_balance_confirmed = max(float(payload.amount), 0.0)
+    profile.bank_balance_source = payload.source if payload.source in {"detected", "manual"} else "manual"
+    profile.bank_balance_last_confirmed_at = datetime.utcnow()
+    profile.updated_at = datetime.utcnow()
+
     db.commit()
     db.refresh(profile)
     return profile

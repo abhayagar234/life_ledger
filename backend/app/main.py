@@ -17,6 +17,12 @@ def _ensure_financial_profile_columns() -> None:
     with engine.begin() as connection:
         if "next_income_in_days" not in existing_columns:
             connection.execute(text("ALTER TABLE financial_profiles ADD COLUMN next_income_in_days INTEGER"))
+        if "bank_balance_confirmed" not in existing_columns:
+            connection.execute(text("ALTER TABLE financial_profiles ADD COLUMN bank_balance_confirmed NUMERIC"))
+        if "bank_balance_source" not in existing_columns:
+            connection.execute(text("ALTER TABLE financial_profiles ADD COLUMN bank_balance_source VARCHAR(20)"))
+        if "bank_balance_last_confirmed_at" not in existing_columns:
+            connection.execute(text("ALTER TABLE financial_profiles ADD COLUMN bank_balance_last_confirmed_at TIMESTAMP"))
 
 
 @asynccontextmanager
