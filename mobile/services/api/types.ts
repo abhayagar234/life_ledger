@@ -104,6 +104,7 @@ export type InsightCard = {
 export type CashflowSummary = {
   as_of_date: string;
   latest_activity_date: string | null;
+  latest_cash_update_date: string | null;
   status: string;
   headline: string;
   plain_summary: string;
@@ -112,15 +113,18 @@ export type CashflowSummary = {
   effective_available_money: number;
   liquid_balance: number;
   cash_on_hand: number;
+  cash_is_stale: boolean;
   upcoming_dues_total: number;
   daily_needs_buffer: number;
   daily_needs_required: number;
   baseline_daily_spend: number;
   runway_days: number | null;
   safe_to_spend: number;
+  safe_to_spend_bank_only: number;
   safe_to_save: number;
   safe_to_invest: number;
   shortfall_amount: number;
+  shortfall_amount_bank_only: number;
   confidence: string;
   explanations: string[];
   watchouts: string[];
@@ -138,6 +142,7 @@ export type ProtectedDueItem = {
   source_type: string;
   emi_payment_id: string | null;
   loan_id: string | null;
+  repeat_monthly: boolean;
 };
 
 export type LedgerEntryCreate = {

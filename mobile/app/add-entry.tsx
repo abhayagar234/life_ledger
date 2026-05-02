@@ -6,7 +6,7 @@ import { AppScreen } from "../components/AppScreen";
 import { Button } from "../components/Button";
 import { ChoiceCard } from "../components/ChoiceCard";
 import { t } from "../i18n";
-import { createLedgerEntry } from "../services/api/moneyos";
+import { createLedgerEntry, createUpcomingDue } from "../services/api/moneyos";
 import { useSessionStore } from "../store/session";
 import type { LedgerEntryCreate } from "../services/api/types";
 import { theme } from "../theme";
@@ -39,8 +39,16 @@ const duePaidOption = {
   icon: "receipt-outline"
 } as const;
 
-type EntryOptionKey = (typeof entryOptions)[number]["key"] | typeof duePaidOption.key;
+const dayTotalOption = {
+  key: "cash_day_total",
+  title: "Today's Cash Total",
+  subtitle: "One total for the day instead of many tiny cash entries",
+  icon: "calculator-outline"
+} as const;
+
+type EntryOptionKey = (typeof entryOptions)[number]["key"] | typeof duePaidOption.key | typeof dayTotalOption.key;
 type SourceOptionKey = "cash" | "online" | "card" | "split";
+type DuePaymentChoice = "full" | "minimum";
 
 const sourceOptions: Array<{
   value: SourceOptionKey;
@@ -56,6 +64,31 @@ const sourceOptions: Array<{
 
 function todayIso() {
   return new Date().toISOString().slice(0, 10);
+}
+
+function offsetDateIso(days: number) {
+  const value = new Date();
+  value.setDate(value.getDate() + days);
+  return value.toISOString().slice(0, 10);
+}
+
+function isCreditCardDueName(name?: string) {
+  if (!name) {
+    return false;
+  }
+  return /(credit|card|\bcc\b)/i.test(name);
+}
+
+function formatEditableAmount(amount: number | null) {
+  if (!amount || !Number.isFinite(amount)) {
+    return "";
+  }
+  return String(Math.round(amount * 100) / 100);
+}
+
+function formatMoney(amount: number | null | undefined) {
+  const safeAmount = Number.isFinite(amount) ? Number(amount) : 0;
+  return `Rs ${Math.round(safeAmount).toLocaleString("en-IN")}`;
 }
 
 type DuePrefill = {
@@ -92,6 +125,18 @@ function buildPayload(
       cash_direction: "in",
       description: note || (source === "online" ? "Manual online or UPI money received" : "Manual cash received"),
       source_label: source === "online" ? "mobile_quick_bank" : "mobile_quick_cash"
+    };
+  }
+
+  if (option === "cash_day_total") {
+    return {
+      entry_type: "expense",
+      amount,
+      entry_date: todayIso(),
+      account_type: "cash",
+      cash_direction: "out",
+      description: note || "Daily cash total",
+      source_label: "daily_cash_total"
     };
   }
 
@@ -163,19 +208,29 @@ export default function AddEntryScreen() {
     dueName?: string;
     dueKey?: string;
     emiPaymentId?: string;
+    recurringDue?: string;
   }>();
   const userId = useSessionStore((state) => state.userId);
   const language = useSessionStore((state) => state.onboardingDraft.preferredLanguage);
   const refreshDashboard = useSessionStore((state) => state.refreshDashboard);
+  const markHasRealData = useSessionStore((state) => state.markHasRealData);
   const currentCashOnHand = useSessionStore((state) => state.dashboard.cashflowSummary?.cash_on_hand ?? 0);
   const initialMode =
-    params.mode === "cash_received" || params.mode === "cash_spent" || params.mode === "due_paid" || params.mode === "cash_set"
+    params.mode === "cash_received" ||
+    params.mode === "cash_spent" ||
+    params.mode === "cash_day_total" ||
+    params.mode === "due_paid" ||
+    params.mode === "cash_set"
       ? params.mode
       : "cash_set";
   const [selected, setSelected] = useState<EntryOptionKey>(initialMode);
   const [source, setSource] = useState<SourceOptionKey>("cash");
   const [splitCashAmount, setSplitCashAmount] = useState("");
   const [amount, setAmount] = useState(typeof params.amount === "string" ? params.amount : "");
+  const [duePaymentChoice, setDuePaymentChoice] = useState<DuePaymentChoice>("full");
+  const [minimumAmount, setMinimumAmount] = useState("");
+  const [isBorrowedMoney, setIsBorrowedMoney] = useState(false);
+  const [borrowedDueDate, setBorrowedDueDate] = useState(offsetDateIso(30));
   const [note, setNote] = useState(typeof params.note === "string" ? params.note : "");
   const [saving, setSaving] = useState(false);
   const duePrefill = useMemo(
@@ -188,17 +243,39 @@ export default function AddEntryScreen() {
   );
 
   const visibleEntryOptions = useMemo(
-    () => (duePrefill.dueName ? [...entryOptions, duePaidOption] : entryOptions),
-    [duePrefill.dueName]
+    () => {
+      if (duePrefill.dueName) {
+        return [...entryOptions, duePaidOption];
+      }
+      if (selected === "cash_day_total") {
+        return [dayTotalOption];
+      }
+      return entryOptions;
+    },
+    [duePrefill.dueName, selected]
   );
 
   const selectedOption = useMemo(
     () => visibleEntryOptions.find((option) => option.key === selected) ?? visibleEntryOptions[0],
     [selected, visibleEntryOptions]
   );
+  const fullDueAmount = useMemo(() => {
+    const parsed = Number(params.amount);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+  }, [params.amount]);
+  const isCreditCardDue = selected === "due_paid" && isCreditCardDueName(duePrefill.dueName);
+  const suggestedMinimumAmount = useMemo(() => {
+    if (!fullDueAmount) {
+      return null;
+    }
+    return Math.max(Math.round(fullDueAmount * 0.03), 1);
+  }, [fullDueAmount]);
   const availableSourceOptions = useMemo(() => {
     if (selected === "cash_spent") {
       return sourceOptions;
+    }
+    if (selected === "cash_day_total") {
+      return [];
     }
     if (selected === "cash_received" || selected === "due_paid") {
       return sourceOptions.filter((option) => option.value !== "card");
@@ -219,12 +296,35 @@ export default function AddEntryScreen() {
     if (
       params.mode === "cash_received" ||
       params.mode === "cash_spent" ||
+      params.mode === "cash_day_total" ||
       params.mode === "due_paid" ||
       params.mode === "cash_set"
     ) {
       setSelected(params.mode);
     }
   }, [params.mode]);
+
+  useEffect(() => {
+    if (!isCreditCardDue || !suggestedMinimumAmount || minimumAmount.trim()) {
+      return;
+    }
+    const defaultMinimum = String(suggestedMinimumAmount);
+    setMinimumAmount(defaultMinimum);
+    if (duePaymentChoice === "minimum") {
+      setAmount(defaultMinimum);
+    }
+  }, [duePaymentChoice, isCreditCardDue, minimumAmount, suggestedMinimumAmount]);
+
+  useEffect(() => {
+    if (!isCreditCardDue || !fullDueAmount) {
+      return;
+    }
+    if (duePaymentChoice === "full") {
+      setAmount(formatEditableAmount(fullDueAmount));
+      return;
+    }
+    setAmount(minimumAmount);
+  }, [duePaymentChoice, fullDueAmount, isCreditCardDue, minimumAmount]);
 
   const helperText = useMemo(() => {
     if (selected === "cash_set") {
@@ -242,10 +342,21 @@ export default function AddEntryScreen() {
       }
       return "Use this when a meaningful cash spend happened outside what the statement can see.";
     }
+    if (selected === "cash_day_total") {
+      return "Use this once at the end of the day when you just want one honest cash number instead of logging every small tea, travel, or kirana payment.";
+    }
     if (selected === "cash_received") {
+      if (isBorrowedMoney) {
+        return "This money comes in now, but we will also keep the return date visible so safe-to-spend does not get inflated.";
+      }
       return source === "online"
         ? "Use this for money received into bank or UPI that you want reflected before the next import."
         : "Good for informal income, cash collections, or money received outside the bank.";
+    }
+    if (selected === "due_paid" && isCreditCardDue) {
+      return duePaymentChoice === "minimum"
+        ? "Minimum payment keeps the rest of the card balance visible, so the app does not overstate free money."
+        : "Full payment clears the whole card due from protection for this cycle.";
     }
     if (duePrefill.dueName) {
       return `Mark ${duePrefill.dueName} as paid so it moves out of pending dues and the safe-to-spend answer updates honestly.`;
@@ -256,7 +367,7 @@ export default function AddEntryScreen() {
     return source === "online"
       ? "This keeps dues honest after you already paid them from bank or UPI."
       : "This keeps dues honest after you already paid them in cash.";
-  }, [selected, source]);
+  }, [duePaymentChoice, duePrefill.dueName, isBorrowedMoney, isCreditCardDue, selected, source]);
 
   return (
     <AppScreen title={t(language, "updateCashDues")} subtitle={t(language, "updateCashDuesSubtitle")}>
@@ -272,7 +383,7 @@ export default function AddEntryScreen() {
       ))}
 
       <View style={styles.form}>
-        {selected !== "cash_set" ? (
+        {selected !== "cash_set" && selected !== "cash_day_total" ? (
           <View style={styles.field}>
             <Text style={styles.label}>Where did this money move?</Text>
             {availableSourceOptions.map((option) => (
@@ -314,16 +425,75 @@ export default function AddEntryScreen() {
         ) : null}
 
         <View style={styles.field}>
-          <Text style={styles.label}>{duePrefill.dueName && selected === "due_paid" ? duePrefill.dueName : selectedOption.title}</Text>
+          <Text style={styles.label}>
+            {isCreditCardDue && duePaymentChoice === "minimum"
+              ? t(language, "creditCardMinimumLabel")
+              : selected === "cash_day_total"
+                ? t(language, "dayTotalPrompt")
+              : duePrefill.dueName && selected === "due_paid"
+                ? duePrefill.dueName
+                : selectedOption.title}
+          </Text>
           <TextInput
             keyboardType="numeric"
-            value={amount}
-            onChangeText={setAmount}
-            placeholder="Example: 1500"
+            value={isCreditCardDue && duePaymentChoice === "full" ? formatEditableAmount(fullDueAmount) : amount}
+            onChangeText={(text) => {
+              if (isCreditCardDue && duePaymentChoice === "minimum") {
+                setMinimumAmount(text);
+              }
+              setAmount(text);
+            }}
+            placeholder={isCreditCardDue && duePaymentChoice === "minimum" ? t(language, "creditCardMinimumPlaceholder") : "Example: 1500"}
             placeholderTextColor={theme.colors.textMuted}
-            style={styles.input}
+            editable={!isCreditCardDue || duePaymentChoice === "minimum"}
+            style={[styles.input, isCreditCardDue && duePaymentChoice === "full" ? styles.inputDisabled : null]}
           />
+          {isCreditCardDue && duePaymentChoice === "full" ? <Text style={styles.noteText}>{t(language, "creditCardFullLocked")}</Text> : null}
         </View>
+
+        {selected === "cash_received" ? (
+          <View style={styles.field}>
+            <ChoiceCard
+              title={t(language, "borrowedToggle")}
+              subtitle={t(language, "borrowedHint")}
+              icon="swap-horizontal-outline"
+              selected={isBorrowedMoney}
+              onPress={() => setIsBorrowedMoney((current) => !current)}
+            />
+            {isBorrowedMoney ? (
+              <View style={styles.field}>
+                <Text style={styles.label}>{t(language, "borrowedDueDateLabel")}</Text>
+                <TextInput
+                  value={borrowedDueDate}
+                  onChangeText={setBorrowedDueDate}
+                  placeholder="YYYY-MM-DD"
+                  placeholderTextColor={theme.colors.textMuted}
+                  style={styles.input}
+                />
+              </View>
+            ) : null}
+          </View>
+        ) : null}
+
+        {isCreditCardDue && fullDueAmount ? (
+          <View style={styles.field}>
+            <Text style={styles.label}>{t(language, "creditCardPaymentQuestion")}</Text>
+            <ChoiceCard
+              title={`${t(language, "creditCardFullOption")} (${formatMoney(fullDueAmount)})`}
+              subtitle={t(language, "creditCardFullHint")}
+              icon="checkmark-done-outline"
+              selected={duePaymentChoice === "full"}
+              onPress={() => setDuePaymentChoice("full")}
+            />
+            <ChoiceCard
+              title={`${t(language, "creditCardMinimumOption")} (${formatMoney(Number(minimumAmount) || suggestedMinimumAmount || 0)})`}
+              subtitle={t(language, "creditCardMinimumHint")}
+              icon="remove-circle-outline"
+              selected={duePaymentChoice === "minimum"}
+              onPress={() => setDuePaymentChoice("minimum")}
+            />
+          </View>
+        ) : null}
 
         <View style={styles.field}>
           <Text style={styles.label}>Short note</Text>
@@ -337,7 +507,7 @@ export default function AddEntryScreen() {
         </View>
 
         <Text style={styles.noteText}>{helperText}</Text>
-        {(selected === "cash_spent" || selected === "due_paid") && source !== "online" && source !== "card" ? (
+        {(selected === "cash_spent" || selected === "cash_day_total" || selected === "due_paid") && source !== "online" && source !== "card" ? (
           <Text style={styles.noteText}>{`Cash on hand right now: Rs ${Math.round(currentCashOnHand).toLocaleString("en-IN")}`}</Text>
         ) : null}
       </View>
@@ -354,6 +524,16 @@ export default function AddEntryScreen() {
           const numericAmount = Number(amount);
           if (!Number.isFinite(numericAmount) || numericAmount <= 0) {
             Alert.alert("Enter an amount", "Please add a valid amount bigger than zero.");
+            return;
+          }
+
+          if (selected === "cash_received" && isBorrowedMoney && !borrowedDueDate.trim()) {
+            Alert.alert("Add return date", "Tell us when this borrowed money should be returned.");
+            return;
+          }
+
+          if (isCreditCardDue && duePaymentChoice === "minimum" && fullDueAmount && numericAmount >= fullDueAmount) {
+            Alert.alert("Use full amount instead", "This amount clears the whole card bill. Choose Full amount instead.");
             return;
           }
 
@@ -383,7 +563,7 @@ export default function AddEntryScreen() {
             }
           }
 
-          if ((selected === "cash_spent" || selected === "due_paid") && source === "cash" && numericAmount > currentCashOnHand) {
+          if ((selected === "cash_spent" || selected === "cash_day_total" || selected === "due_paid") && source === "cash" && numericAmount > currentCashOnHand) {
             Alert.alert(
               "Cash is short",
               "This amount is more than your current cash on hand. Choose Cash + Online / UPI if the payment was split, or choose Online / UPI."
@@ -397,8 +577,27 @@ export default function AddEntryScreen() {
             for (const payload of payloads) {
               await createLedgerEntry(userId, payload);
             }
+            if (selected === "cash_received" && isBorrowedMoney) {
+              await createUpcomingDue(userId, {
+                name: t(language, "borrowedDueName"),
+                amount: numericAmount,
+                due_date: borrowedDueDate,
+                repeat_monthly: false,
+                notes: note.trim() || t(language, "borrowedToggle")
+              });
+            }
+            markHasRealData();
             await refreshDashboard();
-            Alert.alert("Updated", "Your cashflow answer has been refreshed.");
+            Alert.alert(
+              "Updated",
+              params.recurringDue === "1" && selected === "due_paid"
+                ? t(language, "markedPaidRecurring")
+                : selected === "cash_received" && isBorrowedMoney
+                  ? t(language, "borrowedConfirmed")
+                : isCreditCardDue && duePaymentChoice === "minimum"
+                  ? t(language, "creditCardMinimumRecorded")
+                : "Your cashflow answer has been refreshed."
+            );
             router.back();
           } catch (error) {
             Alert.alert("Could not save", error instanceof Error ? error.message : "Please try again.");
@@ -441,6 +640,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: theme.spacing.lg,
     fontSize: theme.typography.body,
     color: theme.colors.text
+  },
+  inputDisabled: {
+    opacity: 0.72
   },
   noteText: {
     fontSize: theme.typography.caption,

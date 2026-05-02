@@ -54,17 +54,7 @@ UI:
 
 - large role cards with emoji + plain text
 
-### 3. Income Rhythm
-
-Goal:
-
-- understand how money usually comes in
-
-UI:
-
-- large radio-card list
-
-### 4. Cash Setup
+### 3. Cash Setup
 
 Goal:
 
@@ -75,15 +65,16 @@ UI:
 - yes/no choice
 - single amount input
 
-### 5. Final Setup
+### 4. Final Setup
 
 Goal:
 
 - confirm the selected persona
 - capture name
+- optionally capture salary day for salaried / family-manager flows
 - complete setup and auto-load sample history
 
-### 6. Home Dashboard
+### 5. Home Dashboard
 
 Goal:
 
@@ -92,16 +83,20 @@ Goal:
 Current shared layout:
 
 - persona banner
-- one primary CTA
+- demo or freshness banner
 - status headline
 - hero number:
   - `Safe to spend`
   - or `Still to protect`
+  - confidence treatment when estimated / incomplete
 - fuel gauge
-- stale/freshness card
+- data completeness line
+- `Keep Aside First` list with due states
+- stale cash banner when needed
 - watchouts
 - supporting metrics
 - explanations
+- scheme recommendation section
 - more actions
 
 ## Current Home Experience
@@ -121,8 +116,8 @@ Hero area:
 Supporting metrics:
 
 - upcoming dues
-- daily needs covered
-- bank money seen this cycle
+- daily basics covered
+- bank / UPI seen this cycle
 - cash on hand
 
 Current helper pattern:
@@ -150,6 +145,7 @@ Actions:
 - cash in hand
 - big cash spent
 - cash received
+- today's cash total
 - due paid
 
 Important current behavior:
@@ -161,6 +157,8 @@ Important current behavior:
   - split cash + online where relevant
 - impossible cash-only payments are blocked
 - the home answer refreshes after save
+- cash received can be tagged as borrowed money and auto-create a return due
+- card-like dues can be marked as full payment or minimum only
 
 ## Add Upcoming Due Flow
 
@@ -195,14 +193,14 @@ Current reality:
 
 ## Current UX Gaps
 
-- named protected dues list is not fully visible on Home yet
-- due-paid flow is still more generic than ideal
 - real CSV import still trails the sample path
+- scheme cards recommend, but do not verify eligibility yet
 - coach / deeper insights should not be treated as finished product surfaces
+- some trust-surface localization is still incomplete outside the main path
 
 ## Next Screen-Level Priorities
 
-1. protected dues list with paid state on Home
+1. clearer named due management from imported history
 2. stronger forgotten-subscription card
-3. clearer named due management from imported history
+3. scheme eligibility drill-down
 4. real auth entry flow

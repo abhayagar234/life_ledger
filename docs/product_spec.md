@@ -38,6 +38,7 @@ Users should be able to:
 - protect important dues before spending freely
 - combine imported statement history with lightweight manual corrections
 - see named watchouts when something important is coming
+- understand when the answer is estimated or missing important inputs
 
 ## Product Principles
 
@@ -75,13 +76,16 @@ MoneyOS should answer these questions simply:
 
 - language-first onboarding
 - persona-aware onboarding
-- next-money horizon selection
 - sample statement autoload after onboarding
 - home screen with:
   - status headline
   - hero safe-to-spend or still-to-protect number
+  - confidence treatment directly on the hero
   - fuel gauge
   - named `Keep Aside First` due list with paid / partial / pending state
+  - data completeness line
+  - persistent demo banner until real data exists
+  - scheme recommendation section
   - supporting metrics
   - freshness messaging
   - explanations and watchouts
@@ -89,12 +93,15 @@ MoneyOS should answer these questions simply:
   - set cash to what you have now
   - big spend
   - cash received
+  - daily cash total
   - due payment from named dues
 - source-aware manual updates:
   - cash
   - online / UPI
   - credit card
   - split cash + online
+- borrowed money can auto-create a return due
+- recurring manual dues
 - add upcoming due flow
 - profile-aware sample data:
   - salaried
@@ -112,9 +119,9 @@ MoneyOS should answer these questions simply:
 - real auth
 - true production-ready CSV import UX
 - full editable due management from Home
-- future-month recurring due materialization
 - real coach product surface
-- opportunities / subsidies layer
+- scheme eligibility checker
+- WhatsApp update / reminder channel
 - full trust-surface localization across every visible screen
 - live bank or Account Aggregator connections
 
@@ -147,13 +154,12 @@ MoneyOS should answer these questions simply:
 - let users mark named dues paid from a visible due list
 - let users correct due names / amounts / dates
 - improve trust through specific watchouts and clear explanations
-- make recurring dues truly recur across future cycles
 
 ### Later
 
-- bilingual UI
 - household collaboration
-- opportunities / scheme recommendations
+- WhatsApp nudges and summaries
+- scheme notifications
 - richer subscription controls
 - live sync with financial accounts
 - first surplus-to-save recommendations
@@ -170,33 +176,17 @@ MoneyOS should answer these questions simply:
 
 ## Final Pre-Demo Checklist
 
-If we had to pick only three final changes before a serious demo, they are:
+The current demo-critical priority is trust:
 
-1. full Home localization cleanup
-   - remove mixed English from the main trust path
-   - especially Home labels, helper text, due/source labels, and action copy
-2. true-or-honest recurring dues behavior
-   - either make recurring dues actually recur
-   - or remove wording that implies automatic monthly carry-forward
-3. flawless onboarding-to-populated-home flow
-   - setup finishes
-   - sample autoloads
-   - Home opens with believable data every time
-   - no empty or confusing intermediate step
-
-These three are the highest leverage because they directly affect:
-
-- trust
-- clarity
-- demo smoothness
+1. answer should not overstate free money
+2. sample data should be visibly treated as sample until real data is added
+3. the user should understand what the answer is based on
 
 ## Current Main Screens
 
 - welcome
 - language selection
 - user type selection
-- income rhythm
-- next money horizon
 - cash setup
 - final setup + sample autoload
 - home dashboard
@@ -215,6 +205,7 @@ These three are the highest leverage because they directly affect:
 - a user can update money reality and see the answer change immediately
 - a user can add a due that affects `Upcoming Dues` and `Safe To Spend`
 - a user can understand the main answer without needing charts
+- a user can tell when the answer is estimated or missing key inputs
 
 ### Demo Acceptance
 
@@ -243,8 +234,8 @@ The current milestone is successful if demo users can:
 
 ## Recommended Next Build Order
 
-1. stronger imported recurring-due surfacing
-2. full trust-surface localization
-3. forgotten subscriptions as a dedicated card
+1. WhatsApp update / reminder channel
+2. scheme eligibility check flow
+3. full trust-surface localization
 4. real auth
 5. broader CSV import support

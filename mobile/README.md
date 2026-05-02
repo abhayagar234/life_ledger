@@ -42,13 +42,18 @@ Household debt in India hit 41.3% of GDP in 2025. Personal loan defaults under �
 
 ## What It Does
 
-- Start with sample statement history or import one bank / UPI statement CSV
-- Strip out all committed expenses: EMI, rent, subscriptions, upcoming bills
-- Show what is actually safe to spend — not the bank balance lie
-- Surface upcoming dues with specific amounts and dates before they hit
-- Show a plain language answer: *"You are covered till May 1 — ₹250 is yours for anything extra"*
-- Let the user add missing cash, online / UPI, credit card, and upcoming due details between imports
-- Ask how long current money should last, not just when salary comes
+- Start with sample statement history or build manually from cash and dues
+- Turn imported + manual money activity into one answer: what is protected, what is visible, and what is still free
+- Show what is actually safe to spend — not just the bank balance
+- Surface upcoming dues with specific amounts, statuses, and dates before they hit
+- Keep confidence visible when data is thin, stale, or incomplete
+- Let the user add only what matters between imports:
+  - cash received
+  - cash spent
+  - one day-total cash number
+  - due paid
+  - upcoming due
+- Show useful government scheme suggestions based on the user type chosen in onboarding
 
 ---
 
@@ -97,22 +102,30 @@ The Account Aggregator framework launched in India in 2021–22 makes this techn
 | `safe_till_date` | The date money runs out |
 | `watchouts` | Specific upcoming hits — "Jio ₹349 on April 25" |
 | `safe_to_save` | Surplus after uncertainty buffer |
-| `safe_to_invest` | Only shown after 3 months consistent surplus |
+| `confidence` | Whether the answer is high-confidence, estimated, or missing too much data |
 
 ---
 
 ## What Is Built
 
 - Language-first onboarding — English, Hindi, Marathi
-- Persona-aware onboarding — user type, income pattern, next-money horizon, cash setup
+- Persona-aware onboarding — user type + cash setup + completion
 - Sample statement flow — setup saves first, then loads realistic history automatically
-- Cashflow engine — safe_to_spend, protected dues, daily-needs coverage, runway, confidence scoring
+- Cashflow engine — safe_to_spend, protected dues, daily-basics coverage, runway, confidence scoring
 - CSV ingestion foundation — normalisation, deduplication, categorisation
 - Fuel gauge home screen — green/yellow/red, plain language headline, hero number
 - Keep Aside First layer — named dues with pending / partial / paid state
+- Recurring due support — recurring manual dues reappear next cycle
 - Manual money updates — cash, online / UPI, credit card, split payment validation
-- Add upcoming due flow — protect a due that is not visible in imported history yet, clearly for the current cycle
-- Freshness messaging on home — prompts users when the answer may be stale
+- Borrowed money protection — cash received can auto-create a return due
+- Credit card minimum-payment handling — minimum payment keeps the remaining card balance protected
+- Stale cash protection — old cash is excluded from the main answer
+- Confidence treatment on hero number — estimated / low-confidence states are visually distinct
+- Persistent demo banner — sample numbers stay visibly “example only” until real data is added
+- Data completeness line on home — shows what the answer is based on
+- Add upcoming due flow — protect a due that is not visible in imported history yet
+- Day-total cash shortcut — one honest number for the day instead of many tiny cash entries
+- Government scheme suggestion card — profile-based, localized by language
 - Profile-aware sample data seeding:
   - salaried
   - daily wage
@@ -123,26 +136,13 @@ The Account Aggregator framework launched in India in 2021–22 makes this techn
 ## What Is Coming
 
 - Real auth (email/OTP) — currently demo stub
-- Forgotten subscriptions as a dedicated wow-moment card — right now this is only surfaced through watchouts
-- Government opportunities card — Ayushman Bharat, PM Kisan based on profile
-- EMI / recurring due auto-materialisation from import patterns — not manual entry yet
-- Full due management — edit / remove / mark named upcoming dues from home
-- Full trust-surface localization beyond the current main path
+- Scheme eligibility check flow — current version only recommends, it does not verify
+- WhatsApp cash / due reminder channel
 - SMS parsing for real-time UPI capture
+- EMI / recurring due auto-materialisation from import patterns beyond manual recurring dues
+- Full due management — edit / remove named upcoming dues from home
+- Full trust-surface localization beyond the current main path
 - Account Aggregator integration — replace CSV with live bank sync
-
-## Final Pre-Demo Checklist
-
-If we had to pick only three final changes before a serious demo, they are:
-
-1. Full Home/localization cleanup
-   Remove mixed English from the main trust path, especially Home labels, helper text, due/source labels, and action copy.
-2. True-or-honest recurring dues behavior
-   Either make recurring dues actually recur, or remove wording that implies automatic monthly carry-forward.
-3. Flawless onboarding-to-populated-home flow
-   Setup should finish, sample should autoload, and Home should open with believable data every time without an empty or confusing intermediate step.
-
-These three matter most because they directly affect trust, clarity, and demo smoothness.
 
 ---
 

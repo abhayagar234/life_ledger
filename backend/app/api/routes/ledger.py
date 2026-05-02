@@ -6,6 +6,7 @@ from app.models.emi_payment import EMIPayment
 from app.models.ledger_entry import LedgerEntry
 from app.models.user import User
 from app.schemas.ledger import LedgerEntryCreate, LedgerEntryRead
+from app.services.upcoming_dues import create_next_recurring_due
 
 router = APIRouter(prefix="/ledger-entries", tags=["ledger entries"])
 
@@ -62,6 +63,8 @@ def create_ledger_entry(
         emi_payment.paid_date = payload.entry_date
         emi_payment.status = "paid" if updated_paid >= float(emi_payment.amount_due) else "partial"
         db.add(emi_payment)
+        if emi_payment.status == "paid" and emi_payment.loan is not None:
+            create_next_recurring_due(db, loan=emi_payment.loan, current_payment=emi_payment)
     db.commit()
     db.refresh(entry)
     return entry

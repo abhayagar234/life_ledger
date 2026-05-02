@@ -14,11 +14,13 @@ class ProtectedDueItem(BaseModel):
     source_type: str
     emi_payment_id: str | None = None
     loan_id: str | None = None
+    repeat_monthly: bool = False
 
 
 class CashflowSummaryResponse(BaseModel):
     as_of_date: date
     latest_activity_date: date | None
+    latest_cash_update_date: date | None = None
     status: str
     headline: str
     plain_summary: str
@@ -27,15 +29,18 @@ class CashflowSummaryResponse(BaseModel):
     effective_available_money: float
     liquid_balance: float
     cash_on_hand: float
+    cash_is_stale: bool = False
     upcoming_dues_total: float
     daily_needs_buffer: float
     daily_needs_required: float
     baseline_daily_spend: float
     runway_days: float | None
     safe_to_spend: float
+    safe_to_spend_bank_only: float = 0
     safe_to_save: float
     safe_to_invest: float
     shortfall_amount: float
+    shortfall_amount_bank_only: float = 0
     confidence: str
     explanations: list[str]
     watchouts: list[str]

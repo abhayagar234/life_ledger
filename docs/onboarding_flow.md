@@ -58,46 +58,7 @@ Reason shown:
 
 - `We’ll shape the questions and money view around your reality.`
 
-### Screen 3. Income Rhythm
-
-Question:
-
-- `How does money usually come in?`
-
-Options:
-
-- daily
-- weekly
-- monthly
-- seasonal
-- mixed
-
-Important current behavior:
-
-- monthly earners may be asked the usual salary date
-- daily and seasonal users do not get forced into a monthly-date question
-
-### Screen 4. Next Money Horizon
-
-Question:
-
-- `When should this money last till?`
-
-Current options:
-
-- about 3 days
-- about 1 week
-- about 15 days
-- about 1 month
-- about 2 months
-- about 3 months
-- about 6 months
-
-Reason shown:
-
-- `Pick the next meaningful money point so we can show a safer daily and overall spend number.`
-
-### Screen 5. Cash Setup
+### Screen 3. Cash Setup
 
 Question:
 
@@ -113,7 +74,7 @@ If yes:
 - input starting cash amount
 - helper text clarifies this includes wallet cash + home cash
 
-### Screen 6. Final Setup
+### Screen 4. Final Setup
 
 Purpose:
 
@@ -124,6 +85,7 @@ Purpose:
 Current behavior:
 
 - selected persona card is shown above the name field
+- salaried and family-manager users can still set the monthly money day here
 - setup save triggers sample statement autoload
 - user goes straight to Home after save with the first answer already loaded
 - sample history now changes by selected profile instead of using one generic salaried sample
@@ -132,8 +94,11 @@ Current behavior:
 
 The app no longer uses these as onboarding steps:
 
+- income rhythm
+- next money horizon
 - loan / EMI setup step
 - separate CSV decision step
+- `Home + Business` tracking scope
 - “prototype works best…” copy
 
 Why:
@@ -150,7 +115,7 @@ The onboarding engine is shared. Only wording and follow-up logic change by user
 
 Can ask:
 
-- usual salary day or income timing
+- usual salary day on the final setup screen
 
 Home emphasis:
 
@@ -160,7 +125,7 @@ Home emphasis:
 
 ### Daily Wage Variant
 
-Does not ask for a salary date.
+Does not ask for a salary date or next-money horizon.
 
 Home emphasis:
 
@@ -171,7 +136,7 @@ Home emphasis:
 
 ### Farmer / Seasonal Variant
 
-Does not force a monthly framing.
+Does not force a monthly framing or a manual runway choice.
 
 Home emphasis:
 
@@ -204,7 +169,6 @@ Target time:
 
 - welcome: 5 seconds
 - user type: 10 seconds
-- income rhythm: 10 seconds
 - cash setup: 15 seconds
 - final setup: 15 to 20 seconds
 
@@ -222,3 +186,22 @@ Total target:
 - invalid amount: `Enter numbers only`
 - no selection made: `Choose one option to continue`
 - setup save failed: explain clearly and offer retry
+
+## Smart Defaults Now Used
+
+These values are no longer asked directly in onboarding. They are inferred from user type:
+
+- salaried → monthly
+- daily wage → daily
+- farmer / seasonal → seasonal
+- business / self-employed → mixed
+- family manager → monthly
+
+Horizon defaults are also inferred:
+
+- salaried with salary day → dynamically calculated to next salary day
+- salaried without salary day → 30 days
+- daily wage → 7 days
+- farmer / seasonal → 90 days
+- business / self-employed → 30 days
+- family manager → same as salaried logic

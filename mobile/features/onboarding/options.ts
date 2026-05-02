@@ -66,18 +66,15 @@ const trackingScopeOptionsByLanguage: Record<LanguageCode, Array<{
 }>> = {
   en: [
     { value: "personal", title: "Home Only", subtitle: "Track personal or household money" },
-    { value: "household", title: "Whole Household", subtitle: "See family income and spending together" },
-    { value: "home_and_business", title: "Home + Business", subtitle: "Keep business and home money visible" }
+    { value: "household", title: "Whole Household", subtitle: "See family income and spending together" }
   ],
   hi: [
     { value: "personal", title: "सिर्फ घर", subtitle: "निजी या घर का पैसा ट्रैक करें" },
-    { value: "household", title: "पूरा परिवार", subtitle: "परिवार की आय और खर्च साथ देखें" },
-    { value: "home_and_business", title: "घर + व्यवसाय", subtitle: "व्यवसाय और घर का पैसा साथ दिखाएँ" }
+    { value: "household", title: "पूरा परिवार", subtitle: "परिवार की आय और खर्च साथ देखें" }
   ],
   mr: [
     { value: "personal", title: "फक्त घर", subtitle: "वैयक्तिक किंवा घरचे पैसे पाहा" },
-    { value: "household", title: "संपूर्ण कुटुंब", subtitle: "कुटुंबाची कमाई आणि खर्च एकत्र पहा" },
-    { value: "home_and_business", title: "घर + व्यवसाय", subtitle: "व्यवसाय आणि घरचे पैसे दोन्ही दिसू द्या" }
+    { value: "household", title: "संपूर्ण कुटुंब", subtitle: "कुटुंबाची कमाई आणि खर्च एकत्र पहा" }
   ]
 };
 

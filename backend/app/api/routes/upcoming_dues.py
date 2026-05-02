@@ -56,7 +56,7 @@ def create_upcoming_due(
         name=loan.counterparty_name,
         amount=float(emi_payment.amount_due),
         due_date=emi_payment.due_date,
-        repeat_monthly=payload.repeat_monthly,
+        repeat_monthly=bool(loan.emi_frequency == "monthly"),
         notes=loan.notes,
         created_at=emi_payment.created_at,
     )
