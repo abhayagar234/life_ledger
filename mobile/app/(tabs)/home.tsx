@@ -469,6 +469,7 @@ function buildHomeCopy(language: LanguageCode) {
       fullyCoveredTillNextIncome: "अगले पैसे आने तक पूरी तरह कवर",
       ofNeededTillNextIncome: (amount: string) => `अगले पैसे आने तक ज़रूरी ${amount} में से`,
       bankSeenHelper: "स्टेटमेंट गतिविधि से अनुमानित",
+      bankSeenNegativeHelper: "इस चक्र में जितना आया उससे ज़्यादा बैंक / UPI से निकल चुका है",
       cashOnHandHelper: "आपके आखिरी नकद अपडेट पर आधारित",
       addMoneyHint: "आज आया पैसा जोड़ें",
       resetCashHint: "अगर दिख रहा नकद गलत है तो सही करें",
@@ -495,6 +496,7 @@ function buildHomeCopy(language: LanguageCode) {
       fullyCoveredTillNextIncome: "पुढचे पैसे येईपर्यंत पूर्ण कव्हर",
       ofNeededTillNextIncome: (amount: string) => `पुढचे पैसे येईपर्यंत लागणाऱ्या ${amount} पैकी`,
       bankSeenHelper: "स्टेटमेंट हालचालीवरून अंदाज",
+      bankSeenNegativeHelper: "या फेरीत जितके आले त्यापेक्षा जास्त बँक / UPI मधून गेले आहे",
       cashOnHandHelper: "तुमच्या शेवटच्या रोख अपडेटवर आधारित",
       addMoneyHint: "आज आलेले पैसे जोडा",
       resetCashHint: "दिसणारी रोख चुकत असेल तर दुरुस्त करा",
@@ -520,6 +522,7 @@ function buildHomeCopy(language: LanguageCode) {
     fullyCoveredTillNextIncome: "fully covered till next income",
     ofNeededTillNextIncome: (amount: string) => `of ${amount} needed till next income`,
     bankSeenHelper: "estimated from statement activity",
+    bankSeenNegativeHelper: "More went out through bank / UPI than came in during this cycle",
     cashOnHandHelper: "based on your latest cash update",
     addMoneyHint: "add money that came in today",
     resetCashHint: "reset if the shown cash looks wrong",
@@ -596,6 +599,7 @@ export default function HomeScreen() {
         dueCount: cashflow.protected_due_items.length
       })
     : null;
+  const displayedBankSeen = cashflow ? Math.max(cashflow.liquid_balance, 0) : 0;
   const heroLabel =
     cashflow?.shortfall_amount && cashflow.shortfall_amount > 0
       ? t(language, "stillToProtect")
@@ -751,6 +755,68 @@ export default function HomeScreen() {
             <Text style={styles.gaugeSummary}>{cashflow.plain_summary}</Text>
           </View>
 
+          <View style={[commonStyles.card, styles.nextStepCard]}>
+            <Text style={styles.nextStepEyebrow}>{t(language, "keepFresh")}</Text>
+            <Text style={styles.nextStepTitle}>{staleLabel}</Text>
+            <Text style={styles.nextStepBody}>{homeCopy.trustBody}</Text>
+          </View>
+
+          <View style={styles.metricRow}>
+            <View style={[commonStyles.card, styles.metricCard]}>
+              <Text style={styles.metricLabel}>{t(language, "safeToSpend")}</Text>
+              <Text style={styles.metricValue}>{formatMoney(cashflow.safe_to_spend)}</Text>
+              <Text style={styles.metricHelper}>
+                {buildSafeToSpendHelper(language, profile, cashflow.next_income_date)}
+              </Text>
+            </View>
+            <View style={[commonStyles.card, styles.metricCard]}>
+              <Text style={styles.metricLabel}>{t(language, "upcomingDues")}</Text>
+              <Text style={styles.metricValue}>{formatMoney(cashflow.upcoming_dues_total)}</Text>
+              <Text style={styles.metricHelper}>{homeCopy.keptAsideFirst}</Text>
+            </View>
+          </View>
+
+          <View style={styles.metricRow}>
+            <View style={[commonStyles.card, styles.metricCard]}>
+              <Text style={styles.metricLabel}>
+                {cashflow.daily_needs_required > 0 && cashflow.daily_needs_buffer <= 0
+                  ? t(language, "dailyNeedsToProtect")
+                  : t(language, "dailyNeedsCovered")}
+              </Text>
+              <Text style={styles.metricValue}>
+                {formatMoney(cashflow.daily_needs_required > 0 && cashflow.daily_needs_buffer <= 0 ? cashflow.daily_needs_required : cashflow.daily_needs_buffer)}
+              </Text>
+              <Text style={styles.metricHelper}>
+                {cashflow.daily_needs_required <= 0
+                  ? homeCopy.needsEstimateLater
+                  : cashflow.daily_needs_buffer <= 0
+                    ? homeCopy.neededBeforeNextMoney
+                    : cashflow.daily_needs_buffer >= cashflow.daily_needs_required
+                      ? homeCopy.fullyCoveredTillNextIncome
+                      : homeCopy.ofNeededTillNextIncome(formatMoney(cashflow.daily_needs_required))}
+              </Text>
+            </View>
+            <View style={[commonStyles.card, styles.metricCard]}>
+              <Text style={styles.metricLabel}>{t(language, "bankSeen")}</Text>
+              <Text style={styles.metricValue}>{formatMoney(displayedBankSeen)}</Text>
+              <Text style={styles.metricHelper}>
+                {cashflow.liquid_balance < 0 ? homeCopy.bankSeenNegativeHelper : homeCopy.bankSeenHelper}
+              </Text>
+            </View>
+          </View>
+
+          <View style={styles.metricRow}>
+            <View style={[commonStyles.card, styles.metricCard]}>
+              <Text style={styles.metricLabel}>{t(language, "cashOnHand")}</Text>
+              <Text style={styles.metricValue}>{cashflow.cash_is_stale ? "—" : formatMoney(cashflow.cash_on_hand)}</Text>
+              <Text style={styles.metricHelper}>
+                {cashflow.cash_is_stale
+                  ? `${t(language, "staleCashUnknown")}${staleCashDays !== null ? ` · ${staleCashDays}d ago` : ""}`
+                  : homeCopy.cashOnHandHelper}
+              </Text>
+            </View>
+          </View>
+
           <View style={[commonStyles.card, commonStyles.shadow, styles.requiredCard]}>
             <View style={styles.requiredHeader}>
               <View style={styles.requiredCopy}>
@@ -827,66 +893,6 @@ export default function HomeScreen() {
             ) : (
               <EmptyStateCard title={keepAsideCopy.emptyTitle} body={keepAsideCopy.emptyBody} />
             )}
-          </View>
-
-          <View style={[commonStyles.card, styles.nextStepCard]}>
-            <Text style={styles.nextStepEyebrow}>{t(language, "keepFresh")}</Text>
-            <Text style={styles.nextStepTitle}>{staleLabel}</Text>
-            <Text style={styles.nextStepBody}>{homeCopy.trustBody}</Text>
-          </View>
-
-          <View style={styles.metricRow}>
-            <View style={[commonStyles.card, styles.metricCard]}>
-              <Text style={styles.metricLabel}>{t(language, "safeToSpend")}</Text>
-              <Text style={styles.metricValue}>{formatMoney(cashflow.safe_to_spend)}</Text>
-              <Text style={styles.metricHelper}>
-                {buildSafeToSpendHelper(language, profile, cashflow.next_income_date)}
-              </Text>
-            </View>
-            <View style={[commonStyles.card, styles.metricCard]}>
-              <Text style={styles.metricLabel}>{t(language, "upcomingDues")}</Text>
-              <Text style={styles.metricValue}>{formatMoney(cashflow.upcoming_dues_total)}</Text>
-              <Text style={styles.metricHelper}>{homeCopy.keptAsideFirst}</Text>
-            </View>
-          </View>
-
-          <View style={styles.metricRow}>
-            <View style={[commonStyles.card, styles.metricCard]}>
-              <Text style={styles.metricLabel}>
-                {cashflow.daily_needs_required > 0 && cashflow.daily_needs_buffer <= 0
-                  ? t(language, "dailyNeedsToProtect")
-                  : t(language, "dailyNeedsCovered")}
-              </Text>
-              <Text style={styles.metricValue}>
-                {formatMoney(cashflow.daily_needs_required > 0 && cashflow.daily_needs_buffer <= 0 ? cashflow.daily_needs_required : cashflow.daily_needs_buffer)}
-              </Text>
-              <Text style={styles.metricHelper}>
-                {cashflow.daily_needs_required <= 0
-                  ? homeCopy.needsEstimateLater
-                  : cashflow.daily_needs_buffer <= 0
-                    ? homeCopy.neededBeforeNextMoney
-                    : cashflow.daily_needs_buffer >= cashflow.daily_needs_required
-                      ? homeCopy.fullyCoveredTillNextIncome
-                      : homeCopy.ofNeededTillNextIncome(formatMoney(cashflow.daily_needs_required))}
-              </Text>
-            </View>
-            <View style={[commonStyles.card, styles.metricCard]}>
-              <Text style={styles.metricLabel}>{t(language, "bankSeen")}</Text>
-              <Text style={styles.metricValue}>{formatMoney(cashflow.liquid_balance)}</Text>
-              <Text style={styles.metricHelper}>{homeCopy.bankSeenHelper}</Text>
-            </View>
-          </View>
-
-          <View style={styles.metricRow}>
-            <View style={[commonStyles.card, styles.metricCard]}>
-              <Text style={styles.metricLabel}>{t(language, "cashOnHand")}</Text>
-              <Text style={styles.metricValue}>{cashflow.cash_is_stale ? "—" : formatMoney(cashflow.cash_on_hand)}</Text>
-              <Text style={styles.metricHelper}>
-                {cashflow.cash_is_stale
-                  ? `${t(language, "staleCashUnknown")}${staleCashDays !== null ? ` · ${staleCashDays}d ago` : ""}`
-                  : homeCopy.cashOnHandHelper}
-              </Text>
-            </View>
           </View>
 
           <View style={[commonStyles.card, commonStyles.shadow, styles.highlightCard]}>
