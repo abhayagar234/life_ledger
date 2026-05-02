@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
-import { StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { AppScreen } from "../../components/AppScreen";
 import { Button } from "../../components/Button";
@@ -47,6 +47,17 @@ function buildStaleLabel(language: LanguageCode, latestActivityDate?: string | n
       : `Last updated ${diffDays} days ago - add today's spend.`;
 }
 
+function daysSince(value?: string | null) {
+  if (!value) {
+    return null;
+  }
+  const parsed = new Date(value);
+  const today = new Date();
+  parsed.setHours(0, 0, 0, 0);
+  today.setHours(0, 0, 0, 0);
+  return Math.max(Math.round((today.getTime() - parsed.getTime()) / (1000 * 60 * 60 * 24)), 0);
+}
+
 function buildSafeToSpendHelper(
   language: LanguageCode,
   profile: { income_pattern?: string | null; next_income_in_days?: number | null; salary_day_of_month?: number | null } | null,
@@ -80,7 +91,15 @@ function buildSafeToSpendHelper(
   return language === "hi" ? "अगले पैसे आने से पहले" : language === "mr" ? "पुढचे पैसे येण्याआधी" : "before next money in";
 }
 
-function buildGaugeState(language: LanguageCode, status?: string | null) {
+function buildGaugeState(language: LanguageCode, status?: string | null, confidence?: string | null) {
+  if (confidence === "low") {
+    return {
+      zone: language === "hi" ? "यहीं से शुरू करें" : language === "mr" ? "इथून सुरू करा" : "Start Here",
+      color: theme.colors.primary,
+      fill: "35%" as const,
+      helper: language === "hi" ? "पहले अपने देय जोड़ें" : language === "mr" ? "आधी तुमची देणी जोडा" : "Add your dues first"
+    };
+  }
   if (status === "risk") {
     return {
       zone: language === "hi" ? "लाल ज़ोन" : language === "mr" ? "लाल भाग" : "Red Zone",
@@ -179,6 +198,82 @@ function formatDueDate(value: string) {
   return new Date(value).toLocaleDateString("en-IN", { day: "numeric", month: "short" });
 }
 
+function isCreditCardDueName(name?: string) {
+  if (!name) {
+    return false;
+  }
+  return /(credit|card|\bcc\b)/i.test(name);
+}
+
+function buildCreditCardOutstandingWatchout(language: LanguageCode, amount: number) {
+  const amountText = formatMoney(amount);
+  if (language === "hi") {
+    return `${t(language, "creditCardOutstandingWatchout")} - ${amountText} अभी भी असुरक्षित है`;
+  }
+  if (language === "mr") {
+    return `${t(language, "creditCardOutstandingWatchout")} - ${amountText} अजूनही सुरक्षित नाही`;
+  }
+  return `${t(language, "creditCardOutstandingWatchout")} - ${amountText} still unprotected`;
+}
+
+function buildDataHealthLine(
+  language: LanguageCode,
+  input: {
+    liquidBalance?: number | null;
+    cashOnHand?: number | null;
+    cashIsStale?: boolean;
+    staleCashDays?: number | null;
+    dueCount?: number;
+  }
+) {
+  const bankPart =
+    (input.liquidBalance ?? 0) > 0
+      ? language === "hi"
+        ? "बैंक ✓"
+        : language === "mr"
+          ? "बँक ✓"
+          : "Bank ✓"
+      : language === "hi"
+        ? "बैंक —"
+        : language === "mr"
+          ? "बँक —"
+          : "Bank —";
+
+  const cashPart = input.cashIsStale
+    ? language === "hi"
+      ? `नकद (${input.staleCashDays ?? "?"}d पहले)`
+      : language === "mr"
+        ? `रोख (${input.staleCashDays ?? "?"}d पूर्वी)`
+        : `Cash (${input.staleCashDays ?? "?"}d ago)`
+    : (input.cashOnHand ?? 0) > 0
+      ? language === "hi"
+        ? "नकद ✓"
+        : language === "mr"
+          ? "रोख ✓"
+          : "Cash ✓"
+      : language === "hi"
+        ? "नकद —"
+        : language === "mr"
+          ? "रोख —"
+          : "Cash —";
+
+  const duePart =
+    (input.dueCount ?? 0) > 0
+      ? language === "hi"
+        ? `${input.dueCount} देय`
+        : language === "mr"
+          ? `${input.dueCount} देणी`
+          : `${input.dueCount} dues`
+      : language === "hi"
+        ? "कोई देय नहीं"
+        : language === "mr"
+          ? "देणी नाहीत"
+          : "No dues added";
+
+  const prefix = language === "hi" ? "आधार:" : language === "mr" ? "आधार:" : "Based on:";
+  return `${prefix} ${bankPart} · ${cashPart} · ${duePart}`;
+}
+
 function buildDueStatusCopy(language: LanguageCode, item: {
   status: "pending" | "partial" | "paid";
   amount_paid: number;
@@ -241,6 +336,117 @@ function buildKeepAsideCopy(language: LanguageCode) {
     safeAfter: "Safe after this",
     paidCount: (count: number) => `${count} already handled this cycle`
   };
+}
+
+type SchemeCard = {
+  name: string;
+  benefit: string;
+  fit: string;
+};
+
+function buildSchemeCards(language: LanguageCode, userType: string | null | undefined): SchemeCard[] {
+  if (language === "hi") {
+    switch (userType) {
+      case "daily_wage":
+        return [
+          { name: "E-Shram", benefit: "असंगठित कामगार रजिस्ट्रेशन और सुरक्षा", fit: "दिहाड़ी, मज़दूरी, ड्राइविंग या अनौपचारिक काम करने वालों के लिए सबसे पहले देखने लायक।" },
+          { name: "PMSBY", benefit: "₹20/साल में दुर्घटना बीमा", fit: "बहुत कम लागत वाला बुनियादी सुरक्षा कवर।" },
+          { name: "PMJJBY", benefit: "₹436/साल में जीवन बीमा", fit: "परिवार पर निर्भर लोग इसे जरूर देखें।" }
+        ];
+      case "farmer_seasonal":
+        return [
+          { name: "PM Kisan", benefit: "योग्य किसानों के लिए ₹6,000/साल", fit: "अगर खेती या जमीन से जुड़ा प्रोफाइल है, तो यह सबसे पहले जांचने लायक है।" },
+          { name: "PMSBY", benefit: "कम लागत पर दुर्घटना सुरक्षा", fit: "मौसमी और खेत-काम वाले परिवारों के लिए उपयोगी बेसिक कवर।" },
+          { name: "E-Shram", benefit: "असंगठित कामगार लाभों का प्रवेश", fit: "अगर खेती के साथ मजदूरी या असंगठित काम भी है, तो यह भी उपयोगी हो सकता है।" }
+        ];
+      case "business_self_employed":
+        return [
+          { name: "Udyam Registration", benefit: "छोटे व्यवसाय के लिए औपचारिक पहचान", fit: "अगर आप दुकान, सेवा या छोटा व्यवसाय चलाते हैं तो यह देखने लायक है।" },
+          { name: "PMSBY", benefit: "कम लागत वाला दुर्घटना कवर", fit: "स्वयंरोज़गार वालों के लिए बेसिक सुरक्षा से शुरुआत करना आसान होता है।" },
+          { name: "PMJJBY", benefit: "सस्ता जीवन सुरक्षा कवर", fit: "अगर परिवार आपकी आय पर निर्भर है, तो यह उपयोगी हो सकता है।" }
+        ];
+      case "family_manager":
+        return [
+          { name: "Ayushman Bharat", benefit: "योग्य परिवारों के लिए स्वास्थ्य कवर", fit: "घर संभालने वाले उपयोगकर्ताओं के लिए यह सबसे महत्वपूर्ण जांचों में से एक है।" },
+          { name: "PMSBY", benefit: "कम लागत में दुर्घटना सुरक्षा", fit: "पूरे परिवार के लिए बेसिक सुरक्षा शुरू करने का आसान कदम।" },
+          { name: "PMJJBY", benefit: "जीवन कवर", fit: "अगर घर की कमाई एक या दो लोगों पर निर्भर है, तो यह देखना चाहिए।" }
+        ];
+      case "salaried":
+      default:
+        return [
+          { name: "PMSBY", benefit: "कम लागत वाला दुर्घटना कवर", fit: "छोटे प्रीमियम में बुनियादी सुरक्षा देखने लायक।" },
+          { name: "PMJJBY", benefit: "सस्ता जीवन कवर", fit: "अगर परिवार आप पर निर्भर है, तो यह अच्छा बेसिक विकल्प हो सकता है।" }
+        ];
+    }
+  }
+
+  if (language === "mr") {
+    switch (userType) {
+      case "daily_wage":
+        return [
+          { name: "E-Shram", benefit: "असंघटित कामगार नोंदणी आणि सुरक्षा", fit: "रोजंदारी, मजुरी, ड्रायव्हिंग किंवा अनौपचारिक काम करणाऱ्यांनी आधी हे तपासावे." },
+          { name: "PMSBY", benefit: "₹20/वर्ष अपघात विमा", fit: "अतिशय कमी खर्चात मूलभूत सुरक्षा." },
+          { name: "PMJJBY", benefit: "₹436/वर्ष जीवन विमा", fit: "कुटुंब तुमच्या उत्पन्नावर अवलंबून असेल तर पाहण्यासारखे." }
+        ];
+      case "farmer_seasonal":
+        return [
+          { name: "PM Kisan", benefit: "पात्र शेतकऱ्यांसाठी ₹6,000/वर्ष", fit: "शेती किंवा जमीनाशी जोडलेला प्रोफाइल असेल तर आधी हे तपासावे." },
+          { name: "PMSBY", benefit: "कमी खर्चात अपघात सुरक्षा", fit: "हंगामी आणि शेतमजुरी करणाऱ्या कुटुंबांसाठी उपयोगी." },
+          { name: "E-Shram", benefit: "असंघटित कामगार लाभांपर्यंत प्रवेश", fit: "शेतीबरोबर इतर मजुरीही असेल तर हेही उपयोगी ठरू शकते." }
+        ];
+      case "business_self_employed":
+        return [
+          { name: "Udyam Registration", benefit: "लघु व्यवसायासाठी औपचारिक ओळख", fit: "दुकान, सेवा किंवा छोटा व्यवसाय असेल तर तपासण्यासारखे." },
+          { name: "PMSBY", benefit: "कमी खर्चाचा अपघात कवर", fit: "स्वयंरोजगारांसाठी मूलभूत संरक्षणाची चांगली सुरुवात." },
+          { name: "PMJJBY", benefit: "स्वस्त जीवन कवर", fit: "कुटुंब उत्पन्नावर अवलंबून असेल तर हे उपयुक्त ठरू शकते." }
+        ];
+      case "family_manager":
+        return [
+          { name: "Ayushman Bharat", benefit: "पात्र कुटुंबांसाठी आरोग्य कवर", fit: "घर सांभाळणाऱ्यांसाठी तपासण्यासारख्या महत्त्वाच्या योजनांपैकी एक." },
+          { name: "PMSBY", benefit: "कमी खर्चात अपघात सुरक्षा", fit: "संपूर्ण कुटुंबासाठी मूलभूत सुरक्षा सुरू करण्याचा सोपा मार्ग." },
+          { name: "PMJJBY", benefit: "जीवन कवर", fit: "घराची कमाई एक-दोन लोकांवर अवलंबून असेल तर पाहावे." }
+        ];
+      case "salaried":
+      default:
+        return [
+          { name: "PMSBY", benefit: "कमी खर्चाचा अपघात कवर", fit: "लहान प्रीमियममध्ये मूलभूत सुरक्षा पाहण्यासारखी." },
+          { name: "PMJJBY", benefit: "स्वस्त जीवन कवर", fit: "कुटुंब तुमच्यावर अवलंबून असेल तर हा चांगला बेसिक पर्याय ठरू शकतो." }
+        ];
+    }
+  }
+
+  switch (userType) {
+    case "daily_wage":
+      return [
+        { name: "E-Shram", benefit: "Registration and protections for informal workers", fit: "Worth checking first if your money comes from labor, driving, delivery, or daily informal work." },
+        { name: "PMSBY", benefit: "Accident cover for Rs 20/year", fit: "Very low-cost basic protection." },
+        { name: "PMJJBY", benefit: "Life cover for Rs 436/year", fit: "Worth checking if family depends on your earnings." }
+      ];
+    case "farmer_seasonal":
+      return [
+        { name: "PM Kisan", benefit: "Rs 6,000/year for eligible farmers", fit: "This is usually the first scheme worth checking for farm-linked households." },
+        { name: "PMSBY", benefit: "Low-cost accident protection", fit: "Useful baseline cover for seasonal and field-work households." },
+        { name: "E-Shram", benefit: "Access point for informal worker benefits", fit: "Still worth checking if farm income is mixed with labor income." }
+      ];
+    case "business_self_employed":
+      return [
+        { name: "Udyam Registration", benefit: "Formal identity for a small business", fit: "Worth checking if you run a shop, service business, or independent work." },
+        { name: "PMSBY", benefit: "Low-cost accident cover", fit: "A simple first protection layer for self-employed households." },
+        { name: "PMJJBY", benefit: "Affordable life cover", fit: "Useful if your household depends heavily on your business income." }
+      ];
+    case "family_manager":
+      return [
+        { name: "Ayushman Bharat", benefit: "Health cover for eligible households", fit: "One of the most important checks for households managing tight monthly money." },
+        { name: "PMSBY", benefit: "Low-cost accident protection", fit: "An easy first protection step for the family." },
+        { name: "PMJJBY", benefit: "Life cover", fit: "Worth checking if one or two earners carry most of the household load." }
+      ];
+    case "salaried":
+    default:
+      return [
+        { name: "PMSBY", benefit: "Low-cost accident cover", fit: "Worth checking as a simple protection layer." },
+        { name: "PMJJBY", benefit: "Affordable life cover", fit: "A sensible basic check if family depends on your income." }
+      ];
+  }
 }
 
 function buildHomeCopy(language: LanguageCode) {
@@ -328,6 +534,7 @@ export default function HomeScreen() {
   const language = useSessionStore((state) => state.onboardingDraft.preferredLanguage);
   const dashboard = useSessionStore((state) => state.dashboard);
   const refreshDashboard = useSessionStore((state) => state.refreshDashboard);
+  const hasRealData = useSessionStore((state) => state.hasRealData);
   const error = useSessionStore((state) => state.error);
   const homeCopy = buildHomeCopy(language);
 
@@ -342,15 +549,67 @@ export default function HomeScreen() {
 
   const cashflow = dashboard.cashflowSummary;
   const quickActions = [
-    { label: t(language, "cashReceivedAction"), icon: "add-circle-outline", hint: homeCopy.addMoneyHint },
-    { label: t(language, "cashInHandAction"), icon: "wallet-outline", hint: homeCopy.resetCashHint },
-    { label: t(language, "bigCashSpentAction"), icon: "remove-circle-outline", hint: homeCopy.cashBlindSpotHint },
+    ...(profile.user_type === "daily_wage" || profile.user_type === "family_manager"
+      ? [
+          { label: t(language, "cashReceivedAction"), icon: "add-circle-outline", hint: homeCopy.addMoneyHint },
+          { label: t(language, "quickActionDayTotal"), icon: "calculator-outline", hint: t(language, "dayTotalHint") },
+          { label: t(language, "cashInHandAction"), icon: "wallet-outline", hint: homeCopy.resetCashHint },
+          { label: t(language, "bigCashSpentAction"), icon: "remove-circle-outline", hint: homeCopy.cashBlindSpotHint }
+        ]
+      : [
+          { label: t(language, "cashReceivedAction"), icon: "add-circle-outline", hint: homeCopy.addMoneyHint },
+          { label: t(language, "cashInHandAction"), icon: "wallet-outline", hint: homeCopy.resetCashHint },
+          { label: t(language, "bigCashSpentAction"), icon: "remove-circle-outline", hint: homeCopy.cashBlindSpotHint }
+        ]),
     { label: t(language, "addUpcomingDueAction"), icon: "alarm-outline", hint: homeCopy.protectDueHint }
   ];
-  const gauge = buildGaugeState(language, cashflow?.status);
+  const gauge = buildGaugeState(language, cashflow?.status, cashflow?.confidence);
   const persona = buildPersona(profile.user_type, language);
   const staleLabel = buildStaleLabel(language, cashflow?.latest_activity_date);
+  const staleCashDays = daysSince(cashflow?.latest_cash_update_date);
   const keepAsideCopy = buildKeepAsideCopy(language);
+  const showStaleCashBanner = Boolean(cashflow?.cash_is_stale);
+  const schemeCards = buildSchemeCards(language, profile.user_type);
+  const creditCardOutstandingWatchouts =
+    cashflow?.protected_due_items
+      .filter((item) => item.status === "partial" && item.remaining_amount > 0 && isCreditCardDueName(item.name))
+      .map((item) => buildCreditCardOutstandingWatchout(language, item.remaining_amount)) ?? [];
+  const allWatchouts = [...creditCardOutstandingWatchouts, ...(cashflow?.watchouts ?? [])];
+  const heroValue = cashflow
+    ? cashflow.shortfall_amount > 0
+      ? formatMoney(cashflow.shortfall_amount)
+      : formatMoney(cashflow.safe_to_spend)
+    : formatMoney(0);
+  const displayedHeroValue = cashflow
+    ? showStaleCashBanner
+      ? cashflow.shortfall_amount_bank_only > 0
+        ? formatMoney(cashflow.shortfall_amount_bank_only)
+        : formatMoney(cashflow.safe_to_spend_bank_only)
+      : heroValue
+    : formatMoney(0);
+  const dataHealthLine = cashflow
+    ? buildDataHealthLine(language, {
+        liquidBalance: cashflow.liquid_balance,
+        cashOnHand: cashflow.cash_on_hand,
+        cashIsStale: cashflow.cash_is_stale,
+        staleCashDays,
+        dueCount: cashflow.protected_due_items.length
+      })
+    : null;
+  const heroLabel =
+    cashflow?.shortfall_amount && cashflow.shortfall_amount > 0
+      ? t(language, "stillToProtect")
+      : cashflow?.confidence === "low"
+        ? t(language, "safeToSpendIncomplete")
+        : cashflow?.confidence === "medium"
+          ? t(language, "safeToSpendEstimated")
+          : t(language, "safeToSpend");
+  const confidenceLabel =
+    cashflow?.confidence === "medium"
+      ? t(language, "confidenceMedium")
+      : cashflow?.confidence === "low"
+        ? t(language, "confidenceLow")
+        : null;
   const primaryBannerAction = cashflow
     ? {
         label: t(language, "updateTodayMoney"),
@@ -388,23 +647,46 @@ export default function HomeScreen() {
         </View>
       ) : null}
 
-      <View style={[commonStyles.card, styles.demoBanner]}>
-        <Text style={styles.demoEyebrow}>{t(language, "startHere")}</Text>
-        <Text style={styles.demoTitle}>{cashflow ? t(language, "keepFresh") : t(language, "bringHistory")}</Text>
-        <Text style={styles.demoBody}>
-          {cashflow
-            ? t(language, "keepFreshBody")
-            : t(language, "cleanStartBody")}
-        </Text>
-        <View style={styles.bannerActions}>
-          <Button label={primaryBannerAction.label} onPress={primaryBannerAction.onPress} />
+      {!hasRealData ? (
+        <View style={[commonStyles.card, commonStyles.shadow, styles.demoModeBanner]}>
+          <Text style={styles.demoEyebrow}>{t(language, "startHere")}</Text>
+          <Text style={styles.demoTitle}>{t(language, "demoBannerTitle")}</Text>
+          <Text style={styles.demoBody}>{t(language, "demoBannerSubtitle")}</Text>
+          <View style={styles.bannerActions}>
+            <Button label={t(language, "demoCtaCash")} onPress={() => router.push({ pathname: "/add-entry", params: { mode: "cash_set" } })} />
+            <Button label={t(language, "demoCtaDues")} variant="secondary" onPress={() => router.push("/add-upcoming-due" as never)} />
+          </View>
         </View>
-      </View>
+      ) : (
+        <View style={[commonStyles.card, styles.demoBanner]}>
+          <Text style={styles.demoEyebrow}>{t(language, "startHere")}</Text>
+          <Text style={styles.demoTitle}>{cashflow ? t(language, "keepFresh") : t(language, "bringHistory")}</Text>
+          <Text style={styles.demoBody}>
+            {cashflow
+              ? t(language, "keepFreshBody")
+              : t(language, "cleanStartBody")}
+          </Text>
+          <View style={styles.bannerActions}>
+            <Button label={primaryBannerAction.label} onPress={primaryBannerAction.onPress} />
+          </View>
+        </View>
+      )}
 
       {error ? (
         <View style={[commonStyles.card, styles.errorCard]}>
           <Text style={styles.errorTitle}>{homeCopy.refreshErrorTitle}</Text>
           <Text style={styles.errorBody}>{error}</Text>
+        </View>
+      ) : null}
+
+      {showStaleCashBanner ? (
+        <View style={[commonStyles.card, commonStyles.shadow, styles.staleCashBanner]}>
+          <Text style={styles.staleCashBannerTitle}>{t(language, "staleCashBannerTitle")}</Text>
+          <Text style={styles.staleCashBannerBody}>{t(language, "staleCashBannerBody")}</Text>
+          <Button
+            label={t(language, "updateMyCash")}
+            onPress={() => router.push({ pathname: "/add-entry", params: { mode: "cash_set" } })}
+          />
         </View>
       ) : null}
 
@@ -418,12 +700,45 @@ export default function HomeScreen() {
               </View>
             </View>
 
-            <Text style={styles.heroValue}>
-              {cashflow.shortfall_amount > 0 ? formatMoney(cashflow.shortfall_amount) : formatMoney(cashflow.safe_to_spend)}
+            <Text
+              style={[
+                styles.heroValue,
+                cashflow.confidence === "medium" ? styles.heroValueMediumConfidence : null,
+                cashflow.confidence === "low" ? styles.heroValueLowConfidence : null,
+                !hasRealData ? styles.heroValueDemo : null
+              ]}
+            >
+              {displayedHeroValue}
             </Text>
-            <Text style={styles.heroValueLabel}>
-              {cashflow.shortfall_amount > 0 ? t(language, "stillToProtect") : t(language, "safeToSpend")}
-            </Text>
+            <Text style={styles.heroValueLabel}>{heroLabel}</Text>
+            {confidenceLabel ? (
+              <View
+                style={[
+                  styles.confidencePill,
+                  cashflow.confidence === "low" ? styles.confidencePillLow : styles.confidencePillMedium
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.confidencePillText,
+                    cashflow.confidence === "low" ? styles.confidencePillTextLow : styles.confidencePillTextMedium
+                  ]}
+                >
+                  {confidenceLabel}
+                </Text>
+              </View>
+            ) : null}
+            {cashflow.confidence === "low" ? <Text style={styles.heroConfidenceHelp}>{t(language, "confidenceLowAction")}</Text> : null}
+            {showStaleCashBanner ? <Text style={styles.heroConfidenceHelp}>{t(language, "staleCashExcluded")}</Text> : null}
+            {dataHealthLine ? (
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => router.push("/import-statement")}
+                style={({ pressed }) => [styles.dataHealthWrap, pressed ? styles.dataHealthWrapPressed : null]}
+              >
+                <Text style={styles.dataHealthText}>{dataHealthLine}</Text>
+              </Pressable>
+            ) : null}
 
             <View style={styles.gaugeTrack}>
               <View style={[styles.gaugeSegment, styles.gaugeDanger]} />
@@ -492,6 +807,7 @@ export default function HomeScreen() {
                                   dueName: item.name,
                                   dueKey: item.due_key,
                                   emiPaymentId: item.emi_payment_id ?? undefined,
+                                  recurringDue: item.repeat_monthly ? "1" : undefined,
                                   note: item.name
                                 }
                               })
@@ -564,8 +880,12 @@ export default function HomeScreen() {
           <View style={styles.metricRow}>
             <View style={[commonStyles.card, styles.metricCard]}>
               <Text style={styles.metricLabel}>{t(language, "cashOnHand")}</Text>
-              <Text style={styles.metricValue}>{formatMoney(cashflow.cash_on_hand)}</Text>
-              <Text style={styles.metricHelper}>{homeCopy.cashOnHandHelper}</Text>
+              <Text style={styles.metricValue}>{cashflow.cash_is_stale ? "—" : formatMoney(cashflow.cash_on_hand)}</Text>
+              <Text style={styles.metricHelper}>
+                {cashflow.cash_is_stale
+                  ? `${t(language, "staleCashUnknown")}${staleCashDays !== null ? ` · ${staleCashDays}d ago` : ""}`
+                  : homeCopy.cashOnHandHelper}
+              </Text>
             </View>
           </View>
 
@@ -580,6 +900,28 @@ export default function HomeScreen() {
               </Text>
             ))}
           </View>
+
+          {schemeCards.length ? (
+            <View style={[commonStyles.card, commonStyles.shadow, styles.schemeSection]}>
+              <Text style={styles.schemeSectionTitle}>{t(language, "schemesSectionTitle")}</Text>
+              <Text style={styles.schemeSectionSubtitle}>{t(language, "schemesSectionSubtitle")}</Text>
+              {schemeCards.map((scheme) => (
+                <View key={scheme.name} style={[commonStyles.card, styles.schemeCard]}>
+                  <View style={styles.schemeHeader}>
+                    <View style={styles.schemeIconWrap}>
+                      <Ionicons name="shield-checkmark-outline" size={18} color={theme.colors.primary} />
+                    </View>
+                    <View style={styles.schemeCopy}>
+                      <Text style={styles.schemeName}>{scheme.name}</Text>
+                      <Text style={styles.schemeBenefit}>{scheme.benefit}</Text>
+                    </View>
+                  </View>
+                  <Text style={styles.schemeFit}>{scheme.fit}</Text>
+                </View>
+              ))}
+              <Text style={styles.schemeFooter}>{t(language, "schemesSectionFooter")}</Text>
+            </View>
+          ) : null}
         </>
       ) : (
         <EmptyStateCard
@@ -606,6 +948,10 @@ export default function HomeScreen() {
                   router.push({ pathname: "/add-entry", params: { mode: "cash_received" } });
                   return;
                 }
+                if (action.label === t(language, "quickActionDayTotal")) {
+                  router.push({ pathname: "/add-entry", params: { mode: "cash_day_total" } });
+                  return;
+                }
                 if (action.label === t(language, "cashInHandAction")) {
                   router.push({ pathname: "/add-entry", params: { mode: "cash_set" } });
                   return;
@@ -619,8 +965,8 @@ export default function HomeScreen() {
 
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>{t(language, "watchouts")}</Text>
-        {cashflow?.watchouts.length ? (
-          cashflow.watchouts.map((alert) => (
+        {allWatchouts.length ? (
+          allWatchouts.map((alert) => (
             <View key={alert} style={[commonStyles.card, styles.alertCard]}>
               <Text style={styles.alertText}>{alert}</Text>
             </View>
@@ -675,6 +1021,11 @@ const styles = StyleSheet.create({
     gap: theme.spacing.xs,
     backgroundColor: theme.colors.surfaceMuted
   },
+  demoModeBanner: {
+    gap: theme.spacing.xs,
+    backgroundColor: "#FFF8EA",
+    borderColor: "#E7C36A"
+  },
   demoEyebrow: {
     fontSize: theme.typography.caption,
     color: theme.colors.primary,
@@ -710,17 +1061,83 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     color: theme.colors.textMuted
   },
+  staleCashBanner: {
+    gap: theme.spacing.sm,
+    borderColor: "#E7C36A",
+    backgroundColor: "#FFF8EA"
+  },
+  staleCashBannerTitle: {
+    fontSize: theme.typography.body,
+    fontWeight: "700",
+    color: "#A86400"
+  },
+  staleCashBannerBody: {
+    fontSize: theme.typography.caption,
+    lineHeight: 18,
+    color: theme.colors.textMuted
+  },
   heroValue: {
     fontSize: 34,
     lineHeight: 38,
     fontWeight: "800",
     color: theme.colors.text
   },
+  heroValueMediumConfidence: {
+    opacity: 0.78,
+    textDecorationLine: "underline",
+    textDecorationColor: "#D98B2B",
+    textDecorationStyle: "solid"
+  },
+  heroValueLowConfidence: {
+    opacity: 0.45
+  },
+  heroValueDemo: {
+    opacity: 0.4
+  },
   heroValueLabel: {
     fontSize: theme.typography.caption,
     color: theme.colors.textMuted,
     textTransform: "uppercase",
     letterSpacing: 0.6
+  },
+  confidencePill: {
+    alignSelf: "flex-start",
+    paddingHorizontal: theme.spacing.sm,
+    paddingVertical: 6,
+    borderRadius: theme.radius.pill
+  },
+  confidencePillMedium: {
+    backgroundColor: "#FFF2D6"
+  },
+  confidencePillLow: {
+    backgroundColor: "#FCE6E1"
+  },
+  confidencePillText: {
+    fontSize: theme.typography.caption,
+    fontWeight: "700"
+  },
+  confidencePillTextMedium: {
+    color: "#A86400"
+  },
+  confidencePillTextLow: {
+    color: theme.colors.danger
+  },
+  heroConfidenceHelp: {
+    fontSize: theme.typography.caption,
+    color: theme.colors.danger,
+    lineHeight: 18
+  },
+  dataHealthWrap: {
+    alignSelf: "flex-start",
+    marginTop: theme.spacing.xs
+  },
+  dataHealthWrapPressed: {
+    opacity: 0.7
+  },
+  dataHealthText: {
+    fontSize: theme.typography.caption,
+    color: "#6C766F",
+    lineHeight: 18
   },
   gaugeCard: {
     gap: theme.spacing.md
@@ -893,6 +1310,60 @@ const styles = StyleSheet.create({
   highlightText: {
     fontSize: theme.typography.body,
     lineHeight: 24,
+    color: theme.colors.textMuted
+  },
+  schemeSection: {
+    gap: theme.spacing.sm,
+    backgroundColor: "#F5FBF8"
+  },
+  schemeSectionTitle: {
+    fontSize: theme.typography.section,
+    fontWeight: "700",
+    color: theme.colors.text
+  },
+  schemeSectionSubtitle: {
+    fontSize: theme.typography.caption,
+    lineHeight: 18,
+    color: theme.colors.textMuted
+  },
+  schemeCard: {
+    gap: theme.spacing.sm,
+    borderColor: "#DCEAE2"
+  },
+  schemeHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing.sm
+  },
+  schemeIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: theme.colors.surfaceMuted
+  },
+  schemeCopy: {
+    flex: 1,
+    gap: 2
+  },
+  schemeName: {
+    fontSize: theme.typography.body,
+    fontWeight: "700",
+    color: theme.colors.text
+  },
+  schemeBenefit: {
+    fontSize: theme.typography.caption,
+    color: theme.colors.primary
+  },
+  schemeFit: {
+    fontSize: theme.typography.caption,
+    lineHeight: 18,
+    color: theme.colors.textMuted
+  },
+  schemeFooter: {
+    fontSize: theme.typography.caption,
+    lineHeight: 18,
     color: theme.colors.textMuted
   },
   alertCard: {

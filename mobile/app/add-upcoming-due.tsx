@@ -1,6 +1,6 @@
 import { router } from "expo-router";
-import { useState } from "react";
-import { ActivityIndicator, Alert, StyleSheet, Text, TextInput, View } from "react-native";
+import { useEffect, useState } from "react";
+import { ActivityIndicator, Alert, StyleSheet, Switch, Text, TextInput, View } from "react-native";
 
 import { AppScreen } from "../components/AppScreen";
 import { Button } from "../components/Button";
@@ -17,11 +17,22 @@ export default function AddUpcomingDueScreen() {
   const userId = useSessionStore((state) => state.userId);
   const language = useSessionStore((state) => state.onboardingDraft.preferredLanguage);
   const refreshDashboard = useSessionStore((state) => state.refreshDashboard);
+  const markHasRealData = useSessionStore((state) => state.markHasRealData);
   const [name, setName] = useState("");
   const [amount, setAmount] = useState("");
   const [dueDate, setDueDate] = useState(todayIso());
   const [notes, setNotes] = useState("");
+  const [repeatMonthly, setRepeatMonthly] = useState(false);
+  const [repeatTouched, setRepeatTouched] = useState(false);
   const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (repeatTouched) {
+      return;
+    }
+    const numericAmount = Number(amount);
+    setRepeatMonthly(Number.isFinite(numericAmount) && numericAmount > 1000);
+  }, [amount, repeatTouched]);
 
   return (
     <AppScreen
@@ -69,15 +80,27 @@ export default function AddUpcomingDueScreen() {
           />
         </View>
 
-        <View style={styles.helperCard}>
-          <Text style={styles.label}>{language === "hi" ? "सिर्फ इस चक्र के लिए" : language === "mr" ? "फक्त या फेरीसाठी" : "Current cycle only"}</Text>
-          <Text style={styles.helper}>
-            {language === "hi"
-              ? "यह देय सिर्फ इस चक्र के लिए सुरक्षित होगा। अगले महीने फिर आए तो दोबारा जोड़ें या स्टेटमेंट हिस्ट्री को पहचानने दें।"
-              : language === "mr"
-                ? "हे देय फक्त या फेरीसाठी सुरक्षित राहील. पुढच्या महिन्यात पुन्हा आले तर परत जोडा किंवा स्टेटमेंट हिस्ट्रीला ते ओळखू द्या."
-                : "This protects the due in the current cycle. If it comes back next month, add it again or let statement history infer it."}
-          </Text>
+        <View style={[styles.helperCard, styles.repeatRow]}>
+          <View style={styles.repeatCopy}>
+            <Text style={styles.label}>{t(language, "repeatMonthlyToggle")}</Text>
+            <Text style={styles.helper}>
+              {repeatMonthly
+                ? t(language, "repeatMonthlyHint")
+                : language === "hi"
+                  ? "यह देय सिर्फ इस चक्र के लिए सुरक्षित होगा।"
+                  : language === "mr"
+                    ? "हे देय फक्त या फेरीसाठी सुरक्षित राहील."
+                    : "This protects the due in the current cycle only."}
+            </Text>
+          </View>
+          <Switch
+            value={repeatMonthly}
+            onValueChange={(value) => {
+              setRepeatTouched(true);
+              setRepeatMonthly(value);
+            }}
+            trackColor={{ true: theme.colors.primary, false: theme.colors.border }}
+          />
         </View>
 
         <View style={styles.field}>
@@ -147,9 +170,10 @@ export default function AddUpcomingDueScreen() {
               name: name.trim(),
               amount: numericAmount,
               due_date: dueDate.trim(),
-              repeat_monthly: false,
+              repeat_monthly: repeatMonthly,
               notes: notes.trim() || null
             });
+            markHasRealData();
             await refreshDashboard();
             Alert.alert(
               language === "hi" ? "देय जोड़ दिया गया" : language === "mr" ? "देय जोडले गेले" : "Due added",
@@ -221,6 +245,16 @@ const styles = StyleSheet.create({
     padding: theme.spacing.md,
     borderRadius: theme.radius.md,
     backgroundColor: theme.colors.surfaceMuted
+  },
+  repeatRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: theme.spacing.md
+  },
+  repeatCopy: {
+    flex: 1,
+    gap: theme.spacing.xs
   },
   loadingRow: {
     flexDirection: "row",

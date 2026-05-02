@@ -11,12 +11,22 @@ from app.schemas.profile import ProfileOnboardingUpdate, ProfileRead
 router = APIRouter(prefix="/profile", tags=["profile"])
 
 
+def _normalized_tracking_scope(value: str) -> str:
+    return "personal" if value == "home_and_business" else value
+
+
 @router.get("", response_model=ProfileRead | None)
 def get_profile(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    return db.query(FinancialProfile).filter(FinancialProfile.user_id == current_user.id).first()
+    profile = db.query(FinancialProfile).filter(FinancialProfile.user_id == current_user.id).first()
+    if profile is not None and profile.tracking_scope == "home_and_business":
+        profile.tracking_scope = "personal"
+        db.add(profile)
+        db.commit()
+        db.refresh(profile)
+    return profile
 
 
 @router.put("/onboarding", response_model=ProfileRead)
@@ -37,7 +47,7 @@ def upsert_profile_onboarding(
     profile.tracks_cash = payload.tracks_cash
     profile.tracks_loans = payload.tracks_loans
     profile.tracks_emi = payload.tracks_emi
-    profile.tracking_scope = payload.tracking_scope.value
+    profile.tracking_scope = _normalized_tracking_scope(payload.tracking_scope.value)
     profile.start_cash_amount = payload.start_cash_amount
     profile.salary_day_of_month = payload.salary_day_of_month
     profile.next_income_in_days = payload.next_income_in_days

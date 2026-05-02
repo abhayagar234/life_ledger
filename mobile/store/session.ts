@@ -52,6 +52,7 @@ type SessionStore = {
   loading: boolean;
   savingOnboarding: boolean;
   onboardingCompleted: boolean;
+  hasRealData: boolean;
   error: string | null;
   userId: string | null;
   displayName: string;
@@ -64,6 +65,7 @@ type SessionStore = {
   refreshDashboard: () => Promise<void>;
   saveOnboarding: () => Promise<ProfileRead>;
   startFreshDemo: () => Promise<void>;
+  markHasRealData: () => void;
 };
 
 function createEmptyDashboard(): DashboardState {
@@ -101,6 +103,43 @@ function createDemoDisplayName() {
   })}`;
 }
 
+function normalizeTrackingScope(scope: TrackingScope): TrackingScope {
+  return scope === "home_and_business" ? "personal" : scope;
+}
+
+function deriveIncomePattern(userType: UserType): IncomePattern {
+  switch (userType) {
+    case "salaried":
+      return "monthly";
+    case "daily_wage":
+      return "daily";
+    case "farmer_seasonal":
+      return "seasonal";
+    case "business_self_employed":
+      return "mixed";
+    case "family_manager":
+      return "monthly";
+  }
+}
+
+function deriveNextIncomeInDays(userType: UserType, salaryDayOfMonth: string): number | null {
+  if ((userType === "salaried" || userType === "family_manager") && salaryDayOfMonth.trim()) {
+    return null;
+  }
+  switch (userType) {
+    case "salaried":
+      return 30;
+    case "daily_wage":
+      return 7;
+    case "farmer_seasonal":
+      return 90;
+    case "business_self_employed":
+      return 30;
+    case "family_manager":
+      return 30;
+  }
+}
+
 function currentPeriod() {
   const now = new Date();
   return {
@@ -116,6 +155,7 @@ export const useSessionStore = create<SessionStore>()(
       loading: false,
       savingOnboarding: false,
       onboardingCompleted: false,
+      hasRealData: false,
       error: null,
       userId: null,
       displayName: "MoneyOS User",
@@ -123,6 +163,7 @@ export const useSessionStore = create<SessionStore>()(
       dashboard: createEmptyDashboard(),
       onboardingDraft: createDefaultDraft(),
       markHydrated: () => set({ hydrated: true }),
+      markHasRealData: () => set({ hasRealData: true }),
       setDraft: (patch) =>
         set((state) => ({
           onboardingDraft: {
@@ -170,7 +211,7 @@ export const useSessionStore = create<SessionStore>()(
                   tracksCash: profile.tracks_cash,
                   tracksLoans: profile.tracks_loans,
                   tracksEmi: profile.tracks_emi,
-                  trackingScope: profile.tracking_scope,
+                  trackingScope: normalizeTrackingScope(profile.tracking_scope),
                   startCashAmount: profile.start_cash_amount ? String(profile.start_cash_amount) : "",
                   salaryDayOfMonth: profile.salary_day_of_month ? String(profile.salary_day_of_month) : "",
                   businessModeEnabled: profile.business_mode_enabled
@@ -194,6 +235,7 @@ export const useSessionStore = create<SessionStore>()(
           loading: true,
           error: null,
           onboardingCompleted: false,
+          hasRealData: false,
           userId: null,
           profile: null,
           dashboard: {
@@ -266,23 +308,26 @@ export const useSessionStore = create<SessionStore>()(
         if (!userId) {
           throw new Error("Missing demo session.");
         }
-        if (!onboardingDraft.userType || !onboardingDraft.incomePattern) {
+        if (!onboardingDraft.userType) {
           throw new Error("Please finish the setup first.");
         }
+
+        const derivedIncomePattern = deriveIncomePattern(onboardingDraft.userType);
+        const derivedNextIncomeInDays = deriveNextIncomeInDays(onboardingDraft.userType, onboardingDraft.salaryDayOfMonth);
 
         set({ savingOnboarding: true, error: null });
         try {
           const payload: ProfileOnboardingUpdate = {
             display_name: onboardingDraft.displayName || "MoneyOS User",
             user_type: onboardingDraft.userType,
-            income_pattern: onboardingDraft.incomePattern,
+            income_pattern: derivedIncomePattern,
             tracks_cash: onboardingDraft.tracksCash,
             tracks_loans: onboardingDraft.tracksLoans,
             tracks_emi: onboardingDraft.tracksEmi,
-            tracking_scope: onboardingDraft.trackingScope,
+            tracking_scope: normalizeTrackingScope(onboardingDraft.trackingScope),
             start_cash_amount: onboardingDraft.startCashAmount ? Number(onboardingDraft.startCashAmount) : null,
             salary_day_of_month: onboardingDraft.salaryDayOfMonth ? Number(onboardingDraft.salaryDayOfMonth) : null,
-            next_income_in_days: onboardingDraft.nextIncomeInDays ? Number(onboardingDraft.nextIncomeInDays) : null,
+            next_income_in_days: derivedNextIncomeInDays,
             business_mode_enabled: onboardingDraft.businessModeEnabled
           };
 
@@ -310,6 +355,7 @@ export const useSessionStore = create<SessionStore>()(
         userId: state.userId,
         displayName: state.displayName,
         onboardingCompleted: state.onboardingCompleted,
+        hasRealData: state.hasRealData,
         profile: state.profile,
         onboardingDraft: state.onboardingDraft
       }),

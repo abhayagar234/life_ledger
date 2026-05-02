@@ -91,11 +91,8 @@ export default function OnboardingCompleteScreen() {
   const persona = useMemo(() => selectedPersona(draft.userType, language), [draft.userType, language]);
   const trackingScopeOptions = getTrackingScopeOptions(language);
 
-  const needsSalaryDay = useMemo(() => draft.incomePattern === "monthly", [draft.incomePattern]);
-  const needsScope = useMemo(
-    () => draft.userType === "business_self_employed" || draft.userType === "family_manager",
-    [draft.userType]
-  );
+  const needsSalaryDay = useMemo(() => draft.userType === "salaried" || draft.userType === "family_manager", [draft.userType]);
+  const needsScope = useMemo(() => draft.userType === "family_manager", [draft.userType]);
   return (
     <AppScreen title={t(language, "finalStepTitle")} subtitle={t(language, "finalStepSubtitle")}>
       {persona ? (
@@ -153,7 +150,7 @@ export default function OnboardingCompleteScreen() {
               onPress={() =>
                 setDraft({
                   trackingScope: option.value,
-                  businessModeEnabled: option.value === "home_and_business" || draft.userType === "business_self_employed"
+                  businessModeEnabled: draft.userType === "business_self_employed"
                 })
               }
             />
@@ -162,7 +159,7 @@ export default function OnboardingCompleteScreen() {
 
       <Button
         label={saving ? t(language, "saving") : t(language, "finishSetup")}
-        disabled={saving || !draft.userType || !draft.incomePattern}
+        disabled={saving || !draft.userType}
         onPress={async () => {
           try {
             await saveOnboarding();

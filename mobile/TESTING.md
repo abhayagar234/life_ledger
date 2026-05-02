@@ -10,6 +10,7 @@ The focus of this round is:
 - persona fit
 - dashboard clarity
 - backend connectivity
+- trust signals around stale / incomplete data
 
 ## Before Testing
 
@@ -29,14 +30,11 @@ The focus of this round is:
 ## Onboarding Test
 
 1. Select each user type and confirm the choice card highlights correctly.
-2. Select each income rhythm and confirm the flow advances.
-3. Turn cash tracking on and off.
-4. Enter a starting cash amount.
-5. Toggle loans and EMI setup.
-6. Choose `Import now` and `Do it later` and confirm both continue cleanly.
-7. Enter a display name and save onboarding.
-8. For salaried users, confirm salary day is accepted.
-9. For business or family flows, confirm scope selection appears.
+2. Turn cash tracking on and off.
+3. Enter a starting cash amount.
+4. Enter a display name and save onboarding.
+5. For salaried and family-manager users, confirm salary day is accepted on the final step.
+6. Confirm onboarding lands on Home without detouring through removed rhythm / horizon screens.
 
 Expected result:
 
@@ -51,18 +49,19 @@ Expected result:
 Check for:
 
 - safe-to-spend hero
-- month spent card
+- confidence treatment if data is thin
 - fixed dues card
-- actions like `Add Expense` and `Add EMI`
+- data completeness line
+- actions like `Cash Received`, `Set Cash To What You Have Now`, and `Add Upcoming Due`
 
 ### Daily Wage / Irregular
 
 Check for:
 
 - cash left or money left hero
-- recent income
-- runway estimate when available
-- actions like `Earned Today` and `Spent Cash`
+- daily wage sample data feels tighter than salaried
+- `Today's Cash` quick action appears
+- daily-basics and due protection still make sense
 
 ### Farmer / Seasonal
 
@@ -70,7 +69,7 @@ Check for:
 
 - seasonal framing text
 - money left after essentials
-- runway or reserve-oriented messaging
+- due protection feels more important than daily-runway precision
 
 ### Business / Self-Employed
 
@@ -78,7 +77,7 @@ Check for:
 
 - money in hero
 - money out and safe-to-spend support cards
-- business-friendly quick actions like `Add Sale`
+- no `Home + Business` tracking scope question appears
 
 ## API Connectivity Test
 
@@ -122,8 +121,21 @@ Expected result:
 - session persistence works
 - onboarding is not shown again after completion unless cleared
 
+## Trust Regression Test
+
+1. Load sample data and confirm the demo banner is visible until real data is added.
+2. Add one real manual update and confirm the demo banner disappears.
+3. Add an upcoming due with recurring ON and confirm it appears in `Keep Aside First`.
+4. Mark a recurring due paid and confirm the success copy says it will reappear next month.
+5. For a card-like due, choose `Minimum only` and confirm the due remains partial, not cleared.
+6. Let cash go stale or simulate a stale cash date and confirm:
+   - hero answer switches to bank-only
+   - stale cash banner appears
+   - cash card shows unknown instead of the old stale amount
+7. Confirm medium-confidence answers do not look identical to high-confidence answers.
+
 ## Known Current Limits
 
-- add-entry forms are still placeholder screens
-- loans, AI coach, and CSV import flows are scaffolded but not fully implemented
+- AI coach and full CSV import UX are still not fully implemented
+- scheme cards are recommendations only, not full eligibility checks
 - dashboard depth depends on backend demo data

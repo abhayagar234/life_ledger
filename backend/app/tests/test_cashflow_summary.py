@@ -11,6 +11,7 @@ from app.models.loan import Loan
 from app.models.user import User
 from app.services.cashflow import build_cashflow_summary
 from app.services.demo_data import seed_demo_financial_data
+from app.services.upcoming_dues import create_next_recurring_due
 
 
 def test_cashflow_summary_returns_demo_ready_answer() -> None:
@@ -237,6 +238,58 @@ def test_manual_due_shows_partial_when_only_part_is_paid() -> None:
         assert due_item.remaining_amount == 2500
 
 
+def test_recurring_manual_due_creates_next_month_when_paid() -> None:
+    engine = create_engine("sqlite+pysqlite:///:memory:", future=True)
+    testing_session_local = sessionmaker(bind=engine, class_=Session, autoflush=False, autocommit=False, future=True)
+    Base.metadata.create_all(bind=engine)
+
+    with testing_session_local() as db:
+        user = User(display_name="Recurring Due User")
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+
+        loan = Loan(
+            user_id=user.id,
+            loan_type="informal_due",
+            counterparty_name="House Rent",
+            principal_amount=5000,
+            interest_type="none",
+            start_date=date.today(),
+            due_date=date.today(),
+            emi_amount=5000,
+            emi_frequency="monthly",
+            outstanding_principal=5000,
+            notes="rent",
+            is_business=False,
+        )
+        db.add(loan)
+        db.flush()
+
+        emi_payment = EMIPayment(
+            user_id=user.id,
+            loan_id=loan.id,
+            due_date=date.today(),
+            amount_due=5000,
+            amount_paid=5000,
+            status="paid",
+            paid_date=date.today(),
+            source_type="manual_due",
+        )
+        db.add(emi_payment)
+        db.commit()
+
+        next_payment = create_next_recurring_due(db, loan=loan, current_payment=emi_payment)
+
+        assert next_payment is not None
+        assert next_payment.status == "pending"
+        assert float(next_payment.amount_due) == 5000
+
+        summary = build_cashflow_summary(db, user.id, as_of=date.today())
+        paid_item = next(item for item in summary.protected_due_items if item.emi_payment_id == emi_payment.id)
+        assert paid_item.repeat_monthly is True
+
+
 def test_cash_set_replaces_old_cash_and_changes_safe_to_spend() -> None:
     engine = create_engine("sqlite+pysqlite:///:memory:", future=True)
     testing_session_local = sessionmaker(bind=engine, class_=Session, autoflush=False, autocommit=False, future=True)
@@ -269,6 +322,42 @@ def test_cash_set_replaces_old_cash_and_changes_safe_to_spend() -> None:
 
         assert after.cash_on_hand == 1500
         assert after.safe_to_spend != before.safe_to_spend
+
+
+def test_stale_cash_is_flagged_and_bank_only_safe_to_spend_is_lower() -> None:
+    engine = create_engine("sqlite+pysqlite:///:memory:", future=True)
+    testing_session_local = sessionmaker(bind=engine, class_=Session, autoflush=False, autocommit=False, future=True)
+    Base.metadata.create_all(bind=engine)
+
+    with testing_session_local() as db:
+        user = User(display_name="Stale Cash User")
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+
+        profile = FinancialProfile(
+            user_id=user.id,
+            user_type="salaried",
+            income_pattern="monthly",
+            tracks_cash=True,
+            tracks_loans=False,
+            tracks_emi=True,
+            tracking_scope="personal",
+            currency_code="INR",
+            start_cash_amount=4000,
+            salary_day_of_month=1,
+            next_income_in_days=None,
+            business_mode_enabled=False,
+        )
+        db.add(profile)
+        db.commit()
+
+        summary = build_cashflow_summary(db, user.id, as_of=date.today())
+
+        assert summary.cash_on_hand == 4000
+        assert summary.cash_is_stale is True
+        assert summary.latest_cash_update_date is not None
+        assert summary.safe_to_spend_bank_only <= summary.safe_to_spend
 
 
 def test_sample_seed_surfaces_multiple_named_due_items() -> None:
@@ -311,6 +400,46 @@ def test_sample_seed_does_not_double_count_fixed_dues_inside_daily_needs() -> No
         assert summary.upcoming_dues_total > 10000
         assert summary.daily_needs_required < 5000
         assert summary.safe_to_spend > 0
+
+
+def test_statement_pattern_credit_card_due_stays_partial_after_minimum_payment() -> None:
+    engine = create_engine("sqlite+pysqlite:///:memory:", future=True)
+    testing_session_local = sessionmaker(bind=engine, class_=Session, autoflush=False, autocommit=False, future=True)
+    Base.metadata.create_all(bind=engine)
+
+    with testing_session_local() as db:
+        user = User(display_name="Pattern Card Due User")
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+
+        seed_demo_financial_data(db, user.id)
+        before = build_cashflow_summary(db, user.id, as_of=date.today())
+        due_item = next(item for item in before.protected_due_items if item.name == "Hdfc Credit Card Due")
+
+        db.add(
+            LedgerEntry(
+                user_id=user.id,
+                entry_type="emi_payment",
+                amount=45,
+                entry_date=date.today(),
+                account_type="bank",
+                cash_direction="out",
+                description="credit card minimum payment",
+                source_label=due_item.due_key,
+                category_code="credit_card_payment",
+            )
+        )
+        db.commit()
+
+        after = build_cashflow_summary(db, user.id, as_of=date.today())
+        updated_due_item = next(item for item in after.protected_due_items if item.due_key == due_item.due_key)
+
+        assert due_item.amount == 1500
+        assert updated_due_item.status == "partial"
+        assert updated_due_item.amount_paid == 45
+        assert updated_due_item.remaining_amount == 1455
+        assert after.upcoming_dues_total == before.upcoming_dues_total - 45
 
 
 def test_sample_seed_preserves_existing_start_cash_amount() -> None:
