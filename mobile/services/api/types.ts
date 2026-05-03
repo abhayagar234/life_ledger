@@ -129,6 +129,10 @@ export type CashflowSummary = {
   explanations: string[];
   watchouts: string[];
   protected_due_items: ProtectedDueItem[];
+  bank_balance_needs_confirmation?: boolean;
+  detected_bank_balance?: number;
+  working_bank_balance?: number;
+  bank_balance_source?: string;
 };
 
 export type ProtectedDueItem = {
@@ -205,4 +209,8 @@ export type UpcomingDueRead = {
   repeat_monthly: boolean;
   notes: string | null;
   created_at: string;
+};
+export type ProfileBankBalanceUpdate = {
+  amount: number;
+  source: "detected" | "manual";
 };

@@ -541,6 +541,25 @@ export default function HomeScreen() {
   const error = useSessionStore((state) => state.error);
   const homeCopy = buildHomeCopy(language);
 
+  const markBankBalanceConfirmed = async (amount: number) => {
+    try {
+      // Call API to confirm bank balance
+      await fetch(`${process.env.EXPO_PUBLIC_API_BASE_URL}/profile/bank-balance`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          amount,
+          source: "detected"
+        }),
+        signal: AbortSignal.timeout(10000)
+      });
+      // Refresh dashboard to reflect the confirmation
+      await refreshDashboard();
+    } catch (err) {
+      console.error("Failed to confirm bank balance:", err);
+    }
+  };
+
   if (!profile) {
     return (
       <AppScreen title={homeCopy.welcomeTitle} subtitle={homeCopy.welcomeSubtitle}>
@@ -675,6 +694,31 @@ export default function HomeScreen() {
           </View>
         </View>
       )}
+
+      {cashflow?.bank_balance_needs_confirmation ? (
+        <View style={[commonStyles.card, commonStyles.shadow, styles.bankConfirmCard]}>
+          <Text style={styles.bankConfirmTitle}>Does this look right?</Text>
+          <Text style={styles.bankConfirmAmount}>
+            {formatMoney(cashflow.detected_bank_balance)}
+          </Text>
+          <Text style={styles.bankConfirmHelper}>Bank / Savings we found</Text>
+          <View style={styles.bankConfirmActions}>
+            <Button
+              label="Yes, this is correct"
+              onPress={() => {
+                if (cashflow?.detected_bank_balance !== undefined) {
+                  markBankBalanceConfirmed(cashflow.detected_bank_balance);
+                }
+              }}
+            />
+            <Button
+              label="Edit amount"
+              variant="secondary"
+              onPress={() => router.push("/edit-bank-balance" as never)}
+            />
+          </View>
+        </View>
+      ) : null}
 
       {error ? (
         <View style={[commonStyles.card, styles.errorCard]}>
@@ -1437,5 +1481,28 @@ const styles = StyleSheet.create({
   paidCountText: {
     fontSize: theme.typography.caption,
     color: theme.colors.textMuted
+  },
+  bankConfirmCard: {
+    borderLeftWidth: 4,
+    borderLeftColor: theme.colors.primary,
+    gap: theme.spacing.md
+  },
+  bankConfirmTitle: {
+    fontSize: theme.typography.body,
+    fontWeight: "600",
+    color: theme.colors.text
+  },
+  bankConfirmAmount: {
+    fontSize: 28,
+    fontWeight: "700",
+    color: theme.colors.text
+  },
+  bankConfirmHelper: {
+    fontSize: theme.typography.caption,
+    color: theme.colors.textMuted
+  },
+  bankConfirmActions: {
+    gap: theme.spacing.sm,
+    marginTop: theme.spacing.md
   }
 });
