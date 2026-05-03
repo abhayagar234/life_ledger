@@ -20,6 +20,11 @@ class ProfileOnboardingUpdate(BaseModel):
     business_mode_enabled: bool = False
 
 
+class ProfileBankBalanceUpdate(BaseModel):
+    amount: float
+    source: str = "manual"
+
+
 class ProfileRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -36,5 +41,8 @@ class ProfileRead(BaseModel):
     salary_day_of_month: Optional[int]
     next_income_in_days: Optional[int]
     business_mode_enabled: bool
+    bank_balance_confirmed: Optional[float]
+    bank_balance_source: Optional[str]
+    bank_balance_last_confirmed_at: Optional[datetime]
     created_at: datetime
     updated_at: datetime

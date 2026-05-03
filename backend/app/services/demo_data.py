@@ -82,19 +82,19 @@ def _create_txn(
 
 def _salaried_transactions(month_start: date) -> list[DemoTxn]:
     return [
-        (date(month_start.year, month_start.month, 1), 18000.0, "credit", "salary acme tools", "salary_income", False, True),
-        (date(month_start.year, month_start.month, 2), 5500.0, "debit", "house rent ramesh", "rent", True, True),
-        (date(month_start.year, month_start.month, 5), 1850.0, "debit", "grocery market", "groceries", False, False),
-        (date(month_start.year, month_start.month, 7), 2500.0, "debit", "school fees vidya mandir", "education", True, True),
-        (date(month_start.year, month_start.month, 8), 1200.0, "debit", "electricity board", "bills", True, True),
-        (date(month_start.year, month_start.month, 12), 2400.0, "debit", "bike emi bajaj finance", "emi_loans", True, True),
-        (date(month_start.year, month_start.month, 16), 900.0, "debit", "medical store", "health", False, False),
-        (date(month_start.year, month_start.month, 18), 2500.0, "credit", "weekend tailoring", "business_income", False, False),
+        (date(month_start.year, month_start.month, 1), 22000.0, "credit", "salary acme tools", "salary_income", False, True),
+        (date(month_start.year, month_start.month, 2), 5200.0, "debit", "house rent ramesh", "rent", True, True),
+        (date(month_start.year, month_start.month, 5), 1650.0, "debit", "grocery market", "groceries", False, False),
+        (date(month_start.year, month_start.month, 7), 1800.0, "debit", "school fees vidya mandir", "education", True, True),
+        (date(month_start.year, month_start.month, 8), 950.0, "debit", "electricity board", "bills", True, True),
+        (date(month_start.year, month_start.month, 12), 1800.0, "debit", "bike emi bajaj finance", "emi_loans", True, True),
+        (date(month_start.year, month_start.month, 16), 700.0, "debit", "medical store", "health", False, False),
+        (date(month_start.year, month_start.month, 18), 1800.0, "credit", "weekend tailoring", "business_income", False, False),
         (date(month_start.year, month_start.month, 20), 650.0, "debit", "upi self transfer", "transfers", False, False),
-        (date(month_start.year, month_start.month, 25), 349.0, "debit", "jio recharge", "bills", True, True),
-        (date(month_start.year, month_start.month, 26), 299.0, "debit", "hotstar subscription", "subscriptions", True, True),
-        (date(month_start.year, month_start.month, 27), 649.0, "debit", "netflix subscription", "subscriptions", True, True),
-        (date(month_start.year, month_start.month, 28), 1500.0, "debit", "hdfc credit card due", "credit_card_payment", True, True),
+        (date(month_start.year, month_start.month, 25), 299.0, "debit", "jio recharge", "bills", True, True),
+        (date(month_start.year, month_start.month, 26), 149.0, "debit", "hotstar subscription", "subscriptions", True, True),
+        (date(month_start.year, month_start.month, 27), 199.0, "debit", "netflix subscription", "subscriptions", True, True),
+        (date(month_start.year, month_start.month, 28), 900.0, "debit", "hdfc credit card due", "credit_card_payment", True, True),
     ]
 
 
@@ -120,7 +120,7 @@ def _daily_wage_transactions(month_start: date) -> list[DemoTxn]:
 
 def _farmer_transactions(month_start: date) -> list[DemoTxn]:
     if month_start.month == date.today().month and month_start.year == date.today().year:
-        crop_credit = (date(month_start.year, month_start.month, 1), 300000.0, "credit", "soyabean mandi payout", "business_income", False, False)
+        crop_credit = (date(month_start.year, month_start.month, 1), 180000.0, "credit", "soyabean mandi payout", "business_income", False, False)
     else:
         crop_credit = (date(month_start.year, month_start.month, 3), 145000.0, "credit", "crop sale mandi", "business_income", False, False)
 
@@ -155,13 +155,13 @@ def _business_transactions(month_start: date) -> list[DemoTxn]:
 
 def _family_manager_transactions(month_start: date) -> list[DemoTxn]:
     return [
-        (date(month_start.year, month_start.month, 1), 16500.0, "credit", "home transfer from rajesh", "salary_income", False, True),
-        (date(month_start.year, month_start.month, 2), 5000.0, "debit", "house rent", "rent", True, True),
-        (date(month_start.year, month_start.month, 5), 2300.0, "debit", "grocery market", "groceries", False, False),
-        (date(month_start.year, month_start.month, 7), 2800.0, "debit", "school fees vidya mandir", "education", True, True),
-        (date(month_start.year, month_start.month, 10), 1100.0, "debit", "gas cylinder", "bills", True, True),
-        (date(month_start.year, month_start.month, 14), 950.0, "debit", "medical store", "health", False, False),
-        (date(month_start.year, month_start.month, 18), 1250.0, "debit", "electricity board", "bills", True, True),
+        (date(month_start.year, month_start.month, 1), 18500.0, "credit", "home transfer from rajesh", "salary_income", False, True),
+        (date(month_start.year, month_start.month, 2), 4800.0, "debit", "house rent", "rent", True, True),
+        (date(month_start.year, month_start.month, 5), 2100.0, "debit", "grocery market", "groceries", False, False),
+        (date(month_start.year, month_start.month, 7), 2200.0, "debit", "school fees vidya mandir", "education", True, True),
+        (date(month_start.year, month_start.month, 10), 950.0, "debit", "gas cylinder", "bills", True, True),
+        (date(month_start.year, month_start.month, 14), 800.0, "debit", "medical store", "health", False, False),
+        (date(month_start.year, month_start.month, 18), 1100.0, "debit", "electricity board", "bills", True, True),
         (date(month_start.year, month_start.month, 24), 349.0, "debit", "jio recharge", "bills", True, True),
     ]
 

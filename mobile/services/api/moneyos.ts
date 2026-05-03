@@ -89,6 +89,18 @@ export function loadSampleStatement(userId: string) {
   });
 }
 
+export function updateBankBalance(
+  userId: string, 
+  amount: number, 
+  source: "detected" | "manual"
+) {
+  return apiRequest<any>("/profile/bank-balance", {
+    method: "PUT",
+    userId,
+    body: JSON.stringify({ amount, source })
+  });
+}
+
 export function createUpcomingDue(userId: string, payload: UpcomingDueCreate) {
   return apiRequest<UpcomingDueRead>("/upcoming-dues", {
     method: "POST",
