@@ -518,6 +518,8 @@ def build_cashflow_summary(db: Session, user_id: str, as_of: date | None = None)
         manual_due_total = _manual_due_total(db, user_id, as_of_date, next_income_date)
         safe_to_spend = _round_money(max(manual_cash - manual_due_total, 0.0))
         safe_to_spend_bank_only = 0.0 if cash_is_stale else safe_to_spend
+        confirmed_bank_balance = float(profile.bank_balance_confirmed) if profile and profile.bank_balance_confirmed is not None else None
+        working_bank_balance = round(max(confirmed_bank_balance or 0.0, 0.0), 2)
         return CashflowSummaryResponse(
             as_of_date=as_of_date,
             latest_activity_date=None,
@@ -529,6 +531,10 @@ def build_cashflow_summary(db: Session, user_id: str, as_of: date | None = None)
             next_income_date=next_income_date,
             effective_available_money=_round_money(max(manual_cash - manual_due_total, 0.0)),
             liquid_balance=0,
+            detected_bank_balance=0,
+            working_bank_balance=working_bank_balance,
+            bank_balance_needs_confirmation=False,
+            bank_balance_source=profile.bank_balance_source if profile and profile.bank_balance_source else "detected",
             cash_on_hand=round(manual_cash, 2),
             cash_is_stale=cash_is_stale,
             upcoming_dues_total=manual_due_total,
@@ -628,13 +634,18 @@ def build_cashflow_summary(db: Session, user_id: str, as_of: date | None = None)
     if baseline_daily_spend == 0 and trailing_total_spend > 0:
         baseline_daily_spend = round((trailing_total_spend * 0.55) / 30, 2)
 
-    effective_available_money = _round_money(bank_observed_balance + manual_cash - protected_dues)
+    detected_bank_balance = round(max(bank_observed_balance, 0.0), 2)
+    confirmed_bank_balance = float(profile.bank_balance_confirmed) if profile and profile.bank_balance_confirmed is not None else None
+    working_bank_balance = round(max(confirmed_bank_balance if confirmed_bank_balance is not None else detected_bank_balance, 0.0), 2)
+    bank_balance_needs_confirmation = detected_bank_balance > 0 and confirmed_bank_balance is None
+
+    effective_available_money = _round_money(working_bank_balance + manual_cash - protected_dues)
     spend_needed_until_income = round(baseline_daily_spend * days_until_income, 2)
     daily_needs_required = round(spend_needed_until_income, 2)
     daily_needs_buffer = round(min(effective_available_money, daily_needs_required), 2)
     safe_leftover = round(effective_available_money - daily_needs_required, 2)
     shortfall_amount = _round_money(daily_needs_required - effective_available_money)
-    effective_available_bank_only = _round_money(bank_observed_balance - protected_dues)
+    effective_available_bank_only = _round_money(working_bank_balance - protected_dues)
     safe_leftover_bank_only = round(effective_available_bank_only - daily_needs_required, 2)
     safe_to_spend_bank_only = _round_money(safe_leftover_bank_only)
     shortfall_amount_bank_only = _round_money(daily_needs_required - effective_available_bank_only)
@@ -697,7 +708,10 @@ def build_cashflow_summary(db: Session, user_id: str, as_of: date | None = None)
         explanations.append(f"Cash on hand includes your declared starting cash of {_fmt_money(float(profile.start_cash_amount))}.")
     if next_income_date:
         explanations.append(f"The next income is estimated around {next_income_date.strftime('%b %d')}.")
-    explanations.append("Bank money here means money seen in this income cycle from imported statement activity, not a live bank balance.")
+        if bank_balance_needs_confirmation:
+            explanations.append("Bank money is still an estimate from imported statement activity until you confirm or edit it.")
+        else:
+            explanations.append("Bank money reflects the amount you confirmed for this cycle.")
 
     watchouts: list[str] = []
     if forgotten_subscriptions:
@@ -729,6 +743,10 @@ def build_cashflow_summary(db: Session, user_id: str, as_of: date | None = None)
         next_income_date=next_income_date,
         effective_available_money=effective_available_money,
         liquid_balance=round(bank_observed_balance, 2),
+        detected_bank_balance=detected_bank_balance,
+        working_bank_balance=working_bank_balance,
+        bank_balance_needs_confirmation=bank_balance_needs_confirmation,
+        bank_balance_source=profile.bank_balance_source if profile and profile.bank_balance_source else "detected",
         cash_on_hand=round(manual_cash, 2),
         cash_is_stale=cash_is_stale,
         upcoming_dues_total=round(protected_dues, 2),

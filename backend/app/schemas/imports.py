@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 
 from pydantic import BaseModel
 
@@ -28,3 +28,31 @@ class FileUploadResponse(BaseModel):
     error_samples: list[str] = []
     preview: list[ImportPreviewRow]
     uploaded_at: datetime
+
+
+class DetectedDueResponse(BaseModel):
+    counterparty_name: str
+    amount: float
+    frequency: str
+    next_due_estimate: date | None
+    confidence: float
+    category_code: str
+    sample_dates: list[str]
+    transaction_ids: list[str]
+
+
+class ConfirmDueItem(BaseModel):
+    counterparty_name: str
+    amount: float
+    frequency: str
+    next_due_date: date
+    custom_name: str | None = None
+
+
+class ConfirmDuesRequest(BaseModel):
+    confirmed_dues: list[ConfirmDueItem]
+
+
+class ConfirmDuesResponse(BaseModel):
+    created_loans: list[str]
+    message: str

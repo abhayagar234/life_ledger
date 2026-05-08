@@ -19,6 +19,7 @@ from app.ingestion.normalizers import (
     normalize_direction,
     parse_amount,
 )
+from app.ingestion.pdf_reader import read_pdf_rows
 from app.ingestion.readers import ParsedSheet, read_csv_rows, read_xls_rows, read_xlsx_rows
 from app.models.import_file import ImportFile
 from app.models.import_row import ImportRow
@@ -46,6 +47,8 @@ def read_rows_for_file_type(file_type: str, content: bytes) -> ParsedTabularFile
         parsed_sheet = read_xlsx_rows(content)
     elif file_type == "xls":
         parsed_sheet = read_xls_rows(content)
+    elif file_type == "pdf":
+        parsed_sheet = read_pdf_rows(content)
     else:
         raise ValueError(f"Unsupported file type: {file_type}")
     return ParsedTabularFile(

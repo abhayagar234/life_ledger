@@ -21,6 +21,7 @@ HEADER_SYNONYMS = {
         "merchant",
         "activity",
         "transaction details",
+        "transaction reference",
         "particulars",
     },
     "amount": {
