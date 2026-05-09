@@ -7,6 +7,7 @@ import { Button } from "../../components/Button";
 import { EmptyStateCard } from "../../components/EmptyStateCard";
 import { QuickActionTile } from "../../components/QuickActionTile";
 import { LanguageCode, t } from "../../i18n";
+import { updateBankBalance } from "../../services/api/moneyos";
 import { useSessionStore } from "../../store/session";
 import { commonStyles, theme } from "../../theme";
 
@@ -274,6 +275,16 @@ function buildDataHealthLine(
   return `${prefix} ${bankPart} · ${cashPart} · ${duePart}`;
 }
 
+function buildWhyNowLine(language: LanguageCode, dues: string, cash: string, bank: string) {
+  if (language === "hi") {
+    return `${dues} पहले से बंधा · ${cash} नकद साथ में · ${bank} बैंक / बचत में`;
+  }
+  if (language === "mr") {
+    return `${dues} आधीच बांधलेले · ${cash} हातातील रोख · ${bank} बँक / बचतीत`;
+  }
+  return `${dues} already spoken for · ${cash} cash with you · ${bank} bank / savings left`;
+}
+
 function buildDueStatusCopy(language: LanguageCode, item: {
   status: "pending" | "partial" | "paid";
   amount_paid: number;
@@ -539,21 +550,15 @@ export default function HomeScreen() {
   const refreshDashboard = useSessionStore((state) => state.refreshDashboard);
   const hasRealData = useSessionStore((state) => state.hasRealData);
   const error = useSessionStore((state) => state.error);
+  const userId = useSessionStore((state) => state.userId);
   const homeCopy = buildHomeCopy(language);
 
   const markBankBalanceConfirmed = async (amount: number) => {
+    if (!userId) {
+      return;
+    }
     try {
-      // Call API to confirm bank balance
-      await fetch(`${process.env.EXPO_PUBLIC_API_BASE_URL}/profile/bank-balance`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          amount,
-          source: "detected"
-        }),
-        signal: AbortSignal.timeout(10000)
-      });
-      // Refresh dashboard to reflect the confirmation
+      await updateBankBalance(userId, amount, "detected");
       await refreshDashboard();
     } catch (err) {
       console.error("Failed to confirm bank balance:", err);
@@ -633,6 +638,14 @@ export default function HomeScreen() {
       : cashflow?.confidence === "low"
         ? t(language, "confidenceLow")
         : null;
+  const whyNowLine = cashflow
+    ? buildWhyNowLine(
+        language,
+        formatMoney(cashflow.upcoming_dues_total),
+        cashflow.cash_is_stale ? "—" : formatMoney(cashflow.cash_on_hand),
+        formatMoney(cashflow.working_bank_balance || displayedBankSeen)
+      )
+    : null;
   const primaryBannerAction = cashflow
     ? {
         label: t(language, "updateTodayMoney"),
@@ -697,14 +710,16 @@ export default function HomeScreen() {
 
       {cashflow?.bank_balance_needs_confirmation ? (
         <View style={[commonStyles.card, commonStyles.shadow, styles.bankConfirmCard]}>
-          <Text style={styles.bankConfirmTitle}>Does this look right?</Text>
+          <Text style={styles.bankConfirmTitle}>{t(language, "bankConfirmTitle")}</Text>
           <Text style={styles.bankConfirmAmount}>
             {formatMoney(cashflow.detected_bank_balance)}
           </Text>
-          <Text style={styles.bankConfirmHelper}>Bank / Savings we found</Text>
+          <Text style={styles.bankConfirmHelper}>
+            {hasRealData ? t(language, "bankConfirmHelper") : t(language, "bankConfirmHelperSample")}
+          </Text>
           <View style={styles.bankConfirmActions}>
             <Button
-              label="Yes, this is correct"
+              label={t(language, "bankConfirmYes")}
               onPress={() => {
                 if (cashflow?.detected_bank_balance !== undefined) {
                   markBankBalanceConfirmed(cashflow.detected_bank_balance);
@@ -712,7 +727,7 @@ export default function HomeScreen() {
               }}
             />
             <Button
-              label="Edit amount"
+              label={t(language, "bankConfirmEdit")}
               variant="secondary"
               onPress={() => router.push("/edit-bank-balance" as never)}
             />
@@ -778,6 +793,12 @@ export default function HomeScreen() {
             ) : null}
             {cashflow.confidence === "low" ? <Text style={styles.heroConfidenceHelp}>{t(language, "confidenceLowAction")}</Text> : null}
             {showStaleCashBanner ? <Text style={styles.heroConfidenceHelp}>{t(language, "staleCashExcluded")}</Text> : null}
+            {cashflow.safe_to_spend <= 0 && (cashflow.cash_on_hand > 0 || (cashflow.working_bank_balance ?? 0) > 0) ? (
+              <>
+                <Text style={styles.heroConfidenceHelp}>{t(language, "safeZeroCommitted")}</Text>
+                <Text style={styles.heroCommittedHelp}>{t(language, "safeZeroCommittedDetail")}</Text>
+              </>
+            ) : null}
             {dataHealthLine ? (
               <Pressable
                 accessibilityRole="button"
@@ -799,11 +820,12 @@ export default function HomeScreen() {
             <Text style={styles.gaugeSummary}>{cashflow.plain_summary}</Text>
           </View>
 
-          <View style={[commonStyles.card, styles.nextStepCard]}>
-            <Text style={styles.nextStepEyebrow}>{t(language, "keepFresh")}</Text>
-            <Text style={styles.nextStepTitle}>{staleLabel}</Text>
-            <Text style={styles.nextStepBody}>{homeCopy.trustBody}</Text>
-          </View>
+          {whyNowLine ? (
+            <View style={[commonStyles.card, styles.whyNowCard]}>
+              <Text style={styles.whyNowTitle}>{t(language, "whyNowTitle")}</Text>
+              <Text style={styles.whyNowBody}>{whyNowLine}</Text>
+            </View>
+          ) : null}
 
           <View style={styles.metricRow}>
             <View style={[commonStyles.card, styles.metricCard]}>
@@ -814,7 +836,7 @@ export default function HomeScreen() {
               </Text>
             </View>
             <View style={[commonStyles.card, styles.metricCard]}>
-              <Text style={styles.metricLabel}>{t(language, "upcomingDues")}</Text>
+              <Text style={styles.metricLabel}>{t(language, "alreadySpokenFor")}</Text>
               <Text style={styles.metricValue}>{formatMoney(cashflow.upcoming_dues_total)}</Text>
               <Text style={styles.metricHelper}>{homeCopy.keptAsideFirst}</Text>
             </View>
@@ -841,17 +863,21 @@ export default function HomeScreen() {
               </Text>
             </View>
             <View style={[commonStyles.card, styles.metricCard]}>
-              <Text style={styles.metricLabel}>{t(language, "bankSeen")}</Text>
-              <Text style={styles.metricValue}>{formatMoney(displayedBankSeen)}</Text>
+              <Text style={styles.metricLabel}>{hasRealData ? t(language, "bankSeen") : t(language, "bankSeenSample")}</Text>
+              <Text style={styles.metricValue}>{formatMoney(cashflow.working_bank_balance || displayedBankSeen)}</Text>
               <Text style={styles.metricHelper}>
-                {cashflow.liquid_balance < 0 ? homeCopy.bankSeenNegativeHelper : homeCopy.bankSeenHelper}
+                {!hasRealData
+                  ? t(language, "bankSeenSampleHelper")
+                  : cashflow.liquid_balance < 0
+                    ? homeCopy.bankSeenNegativeHelper
+                    : homeCopy.bankSeenHelper}
               </Text>
             </View>
           </View>
 
           <View style={styles.metricRow}>
             <View style={[commonStyles.card, styles.metricCard]}>
-              <Text style={styles.metricLabel}>{t(language, "cashOnHand")}</Text>
+              <Text style={styles.metricLabel}>{t(language, "cashWithYou")}</Text>
               <Text style={styles.metricValue}>{cashflow.cash_is_stale ? "—" : formatMoney(cashflow.cash_on_hand)}</Text>
               <Text style={styles.metricHelper}>
                 {cashflow.cash_is_stale
@@ -937,6 +963,12 @@ export default function HomeScreen() {
             ) : (
               <EmptyStateCard title={keepAsideCopy.emptyTitle} body={keepAsideCopy.emptyBody} />
             )}
+          </View>
+
+          <View style={[commonStyles.card, styles.nextStepCard]}>
+            <Text style={styles.nextStepEyebrow}>{t(language, "keepFresh")}</Text>
+            <Text style={styles.nextStepTitle}>{staleLabel}</Text>
+            <Text style={styles.nextStepBody}>{homeCopy.trustBody}</Text>
           </View>
 
           <View style={[commonStyles.card, commonStyles.shadow, styles.highlightCard]}>
@@ -1177,6 +1209,11 @@ const styles = StyleSheet.create({
     color: theme.colors.danger,
     lineHeight: 18
   },
+  heroCommittedHelp: {
+    fontSize: theme.typography.caption,
+    color: theme.colors.textMuted,
+    lineHeight: 18
+  },
   dataHealthWrap: {
     alignSelf: "flex-start",
     marginTop: theme.spacing.xs
@@ -1263,6 +1300,21 @@ const styles = StyleSheet.create({
   },
   nextStepCard: {
     gap: theme.spacing.xs
+  },
+  whyNowCard: {
+    gap: theme.spacing.xs,
+    backgroundColor: "#F8F4EC"
+  },
+  whyNowTitle: {
+    fontSize: theme.typography.caption,
+    color: theme.colors.primary,
+    textTransform: "uppercase",
+    letterSpacing: 0.6
+  },
+  whyNowBody: {
+    fontSize: theme.typography.body,
+    lineHeight: 22,
+    color: theme.colors.text
   },
   nextStepEyebrow: {
     fontSize: theme.typography.caption,

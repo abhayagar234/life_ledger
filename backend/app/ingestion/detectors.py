@@ -19,8 +19,20 @@ def detect_source(file_name: str, headers: Iterable[str], sheet_names: Iterable[
         return ("wallet_export_like", "wallet")
     if "card" in lowered_name or "card number" in normalized_headers or "merchant" in normalized_headers:
         return ("generic_card_like", "card")
+    if {"transaction details", "amount (inr)"} & normalized_headers:
+        return ("icici_card_like", "card")
     if "withdrawal amt." in normalized_headers or "deposit amt." in normalized_headers:
         return ("hdfc_bank_like", "bank")
+    if {"transaction date", "transaction remarks", "debit amount", "credit amount"} <= normalized_headers:
+        return ("icici_bank_like", "bank")
+    if {"tran date", "particulars"} & normalized_headers:
+        return ("axis_bank_like", "bank")
+    if {"date", "debit", "credit"} & normalized_headers and "transaction reference" in normalized_headers:
+        return ("sbi_bank_like", "bank")
+    if {"txn date", "description", "debit", "credit"} <= normalized_headers:
+        return ("sbi_bank_like", "bank")
+    if {"narration", "debit", "credit"} & normalized_headers and "withdrawal amt." not in normalized_headers:
+        return ("kotak_bank_like", "bank")
     if {"transaction date", "value date", "narration"} & normalized_headers:
         return ("generic_bank_like", "bank")
     if {"statement", "transactions"} & normalized_sheets:
