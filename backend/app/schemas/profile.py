@@ -18,11 +18,18 @@ class ProfileOnboardingUpdate(BaseModel):
     salary_day_of_month: Optional[int] = None
     next_income_in_days: Optional[int] = None
     business_mode_enabled: bool = False
+    money_mix_type: str = "home"
+    receives_salary_besides_business: bool = False
+    business_reserve_amount: Optional[float] = None
 
 
 class ProfileBankBalanceUpdate(BaseModel):
     amount: float
     source: str = "manual"
+
+
+class ProfileDailyNeedsUpdate(BaseModel):
+    amount: float
 
 
 class ProfileRead(BaseModel):
@@ -41,6 +48,10 @@ class ProfileRead(BaseModel):
     salary_day_of_month: Optional[int]
     next_income_in_days: Optional[int]
     business_mode_enabled: bool
+    money_mix_type: str
+    receives_salary_besides_business: bool
+    business_reserve_amount: Optional[float]
+    daily_needs_override: Optional[float]
     bank_balance_confirmed: Optional[float]
     bank_balance_source: Optional[str]
     bank_balance_last_confirmed_at: Optional[datetime]

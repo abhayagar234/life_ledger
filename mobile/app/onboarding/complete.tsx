@@ -5,7 +5,7 @@ import { ActivityIndicator, StyleSheet, Text, TextInput, View } from "react-nati
 import { AppScreen } from "../../components/AppScreen";
 import { Button } from "../../components/Button";
 import { ChoiceCard } from "../../components/ChoiceCard";
-import { getTrackingScopeOptions } from "../../features/onboarding/options";
+import { getMoneyMixOptions, getTrackingScopeOptions } from "../../features/onboarding/options";
 import { LanguageCode, t } from "../../i18n";
 import { useSessionStore } from "../../store/session";
 import { commonStyles, theme } from "../../theme";
@@ -90,8 +90,13 @@ export default function OnboardingCompleteScreen() {
   const language = useSessionStore((state) => state.onboardingDraft.preferredLanguage);
   const persona = useMemo(() => selectedPersona(draft.userType, language), [draft.userType, language]);
   const trackingScopeOptions = getTrackingScopeOptions(language);
+  const moneyMixOptions = getMoneyMixOptions(language);
 
-  const needsSalaryDay = useMemo(() => draft.userType === "salaried" || draft.userType === "family_manager", [draft.userType]);
+  const isBusinessUser = useMemo(() => draft.userType === "business_self_employed", [draft.userType]);
+  const needsSalaryDay = useMemo(
+    () => draft.userType === "salaried" || draft.userType === "family_manager" || (isBusinessUser && draft.receivesSalaryBesidesBusiness),
+    [draft.receivesSalaryBesidesBusiness, draft.userType, isBusinessUser]
+  );
   const needsScope = useMemo(() => draft.userType === "family_manager", [draft.userType]);
   return (
     <AppScreen title={t(language, "finalStepTitle")} subtitle={t(language, "finalStepSubtitle")}>
@@ -157,13 +162,67 @@ export default function OnboardingCompleteScreen() {
           ))
         : null}
 
+      {isBusinessUser ? (
+        <>
+          <View style={styles.field}>
+            <Text style={styles.label}>{t(language, "moneyMixQuestion")}</Text>
+            {moneyMixOptions.map((option) => (
+              <ChoiceCard
+                key={option.value}
+                title={option.title}
+                subtitle={option.subtitle}
+                icon="swap-horizontal-outline"
+                selected={draft.moneyMixType === option.value}
+                onPress={() =>
+                  setDraft({
+                    moneyMixType: option.value,
+                    businessModeEnabled: true
+                  })
+                }
+              />
+            ))}
+          </View>
+
+          <View style={styles.field}>
+            <Text style={styles.label}>{t(language, "receivesSalaryQuestion")}</Text>
+            <ChoiceCard
+              title={t(language, "yesOption")}
+              subtitle={t(language, "receivesSalaryYes")}
+              icon="checkmark-circle-outline"
+              selected={draft.receivesSalaryBesidesBusiness}
+              onPress={() => setDraft({ receivesSalaryBesidesBusiness: true, businessModeEnabled: true })}
+            />
+            <ChoiceCard
+              title={t(language, "noOption")}
+              subtitle={t(language, "receivesSalaryNo")}
+              icon="close-circle-outline"
+              selected={!draft.receivesSalaryBesidesBusiness}
+              onPress={() => setDraft({ receivesSalaryBesidesBusiness: false, salaryDayOfMonth: "", businessModeEnabled: true })}
+            />
+          </View>
+
+          <View style={[commonStyles.card, styles.field]}>
+            <Text style={styles.label}>{t(language, "businessReserveLabel")}</Text>
+            <TextInput
+              keyboardType="numeric"
+              style={styles.input}
+              value={draft.businessReserveAmount}
+              onChangeText={(value) => setDraft({ businessReserveAmount: value, businessModeEnabled: true })}
+              placeholder={t(language, "businessReservePlaceholder")}
+              placeholderTextColor={theme.colors.textMuted}
+            />
+            <Text style={styles.help}>{t(language, "businessReserveHelp")}</Text>
+          </View>
+        </>
+      ) : null}
+
       <Button
         label={saving ? t(language, "saving") : t(language, "finishSetup")}
         disabled={saving || !draft.userType}
         onPress={async () => {
           try {
             await saveOnboarding();
-            router.replace("/(tabs)/home");
+            router.replace("/import-statement");
           } catch {
             return;
           }

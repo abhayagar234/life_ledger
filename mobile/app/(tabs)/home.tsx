@@ -1,13 +1,14 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { useEffect } from "react";
+import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { AppScreen } from "../../components/AppScreen";
 import { Button } from "../../components/Button";
 import { EmptyStateCard } from "../../components/EmptyStateCard";
 import { QuickActionTile } from "../../components/QuickActionTile";
 import { LanguageCode, t } from "../../i18n";
-import { updateBankBalance } from "../../services/api/moneyos";
+import { loadSampleStatement, updateBankBalance } from "../../services/api/moneyos";
 import { useSessionStore } from "../../store/session";
 import { commonStyles, theme } from "../../theme";
 
@@ -549,9 +550,11 @@ export default function HomeScreen() {
   const dashboard = useSessionStore((state) => state.dashboard);
   const refreshDashboard = useSessionStore((state) => state.refreshDashboard);
   const hasRealData = useSessionStore((state) => state.hasRealData);
+  const startFreshDemo = useSessionStore((state) => state.startFreshDemo);
   const error = useSessionStore((state) => state.error);
   const userId = useSessionStore((state) => state.userId);
   const homeCopy = buildHomeCopy(language);
+  const isBusinessOrHybridUser = profile?.user_type === "business_self_employed" || profile?.receives_salary_besides_business;
 
   const markBankBalanceConfirmed = async (amount: number) => {
     if (!userId) {
@@ -575,21 +578,29 @@ export default function HomeScreen() {
   }
 
   const cashflow = dashboard.cashflowSummary;
-  const quickActions = [
-    ...(profile.user_type === "daily_wage" || profile.user_type === "family_manager"
+  const quickActions = isBusinessOrHybridUser
+    ? [
+        { key: "business_customer_payment", label: t(language, "businessCustomerPaymentAction"), icon: "cash-outline", hint: t(language, "businessCustomerPaymentHint") },
+        { key: "business_supplier_expense", label: t(language, "businessSupplierExpenseAction"), icon: "cube-outline", hint: t(language, "businessSupplierExpenseHint") },
+        { key: "business_cash_expense", label: t(language, "businessCashExpenseAction"), icon: "briefcase-outline", hint: t(language, "businessCashExpenseHint") },
+        { key: "cash_set", label: t(language, "cashInHandAction"), icon: "wallet-outline", hint: homeCopy.resetCashHint },
+        { key: "add_due", label: t(language, "addUpcomingDueAction"), icon: "alarm-outline", hint: homeCopy.protectDueHint }
+      ]
+    : [
+        ...(profile.user_type === "daily_wage" || profile.user_type === "family_manager"
       ? [
-          { label: t(language, "cashReceivedAction"), icon: "add-circle-outline", hint: homeCopy.addMoneyHint },
-          { label: t(language, "quickActionDayTotal"), icon: "calculator-outline", hint: t(language, "dayTotalHint") },
-          { label: t(language, "cashInHandAction"), icon: "wallet-outline", hint: homeCopy.resetCashHint },
-          { label: t(language, "bigCashSpentAction"), icon: "remove-circle-outline", hint: homeCopy.cashBlindSpotHint }
+          { key: "cash_received", label: t(language, "cashReceivedAction"), icon: "add-circle-outline", hint: homeCopy.addMoneyHint },
+          { key: "cash_day_total", label: t(language, "quickActionDayTotal"), icon: "calculator-outline", hint: t(language, "dayTotalHint") },
+          { key: "cash_set", label: t(language, "cashInHandAction"), icon: "wallet-outline", hint: homeCopy.resetCashHint },
+          { key: "cash_spent", label: t(language, "bigCashSpentAction"), icon: "remove-circle-outline", hint: homeCopy.cashBlindSpotHint }
         ]
       : [
-          { label: t(language, "cashReceivedAction"), icon: "add-circle-outline", hint: homeCopy.addMoneyHint },
-          { label: t(language, "cashInHandAction"), icon: "wallet-outline", hint: homeCopy.resetCashHint },
-          { label: t(language, "bigCashSpentAction"), icon: "remove-circle-outline", hint: homeCopy.cashBlindSpotHint }
+          { key: "cash_received", label: t(language, "cashReceivedAction"), icon: "add-circle-outline", hint: homeCopy.addMoneyHint },
+          { key: "cash_set", label: t(language, "cashInHandAction"), icon: "wallet-outline", hint: homeCopy.resetCashHint },
+          { key: "cash_spent", label: t(language, "bigCashSpentAction"), icon: "remove-circle-outline", hint: homeCopy.cashBlindSpotHint }
         ]),
-    { label: t(language, "addUpcomingDueAction"), icon: "alarm-outline", hint: homeCopy.protectDueHint }
-  ];
+        { key: "add_due", label: t(language, "addUpcomingDueAction"), icon: "alarm-outline", hint: homeCopy.protectDueHint }
+      ];
   const gauge = buildGaugeState(language, cashflow?.status, cashflow?.confidence);
   const persona = buildPersona(profile.user_type, language);
   const staleLabel = buildStaleLabel(language, cashflow?.latest_activity_date);
@@ -655,6 +666,13 @@ export default function HomeScreen() {
         label: t(language, "loadSample"),
         onPress: () => router.push("/import-statement")
       };
+  const isFirstDecisionState = !cashflow;
+
+  useEffect(() => {
+    if (isFirstDecisionState) {
+      router.replace("/import-statement");
+    }
+  }, [isFirstDecisionState]);
 
   return (
     <AppScreen
@@ -683,32 +701,7 @@ export default function HomeScreen() {
         </View>
       ) : null}
 
-      {!hasRealData ? (
-        <View style={[commonStyles.card, commonStyles.shadow, styles.demoModeBanner]}>
-          <Text style={styles.demoEyebrow}>{t(language, "startHere")}</Text>
-          <Text style={styles.demoTitle}>{t(language, "demoBannerTitle")}</Text>
-          <Text style={styles.demoBody}>{t(language, "demoBannerSubtitle")}</Text>
-          <View style={styles.bannerActions}>
-            <Button label={t(language, "demoCtaCash")} onPress={() => router.push({ pathname: "/add-entry", params: { mode: "cash_set" } })} />
-            <Button label={t(language, "demoCtaDues")} variant="secondary" onPress={() => router.push("/add-upcoming-due" as never)} />
-          </View>
-        </View>
-      ) : (
-        <View style={[commonStyles.card, styles.demoBanner]}>
-          <Text style={styles.demoEyebrow}>{t(language, "startHere")}</Text>
-          <Text style={styles.demoTitle}>{cashflow ? t(language, "keepFresh") : t(language, "bringHistory")}</Text>
-          <Text style={styles.demoBody}>
-            {cashflow
-              ? t(language, "keepFreshBody")
-              : t(language, "cleanStartBody")}
-          </Text>
-          <View style={styles.bannerActions}>
-            <Button label={primaryBannerAction.label} onPress={primaryBannerAction.onPress} />
-          </View>
-        </View>
-      )}
-
-      {cashflow?.bank_balance_needs_confirmation ? (
+      {cashflow?.bank_balance_needs_confirmation && hasRealData ? (
         <View style={[commonStyles.card, commonStyles.shadow, styles.bankConfirmCard]}>
           <Text style={styles.bankConfirmTitle}>{t(language, "bankConfirmTitle")}</Text>
           <Text style={styles.bankConfirmAmount}>
@@ -827,6 +820,15 @@ export default function HomeScreen() {
             </View>
           ) : null}
 
+          {cashflow.business_reserve_amount > 0 ? (
+            <View style={[commonStyles.card, styles.whyNowCard]}>
+              <Text style={styles.whyNowTitle}>{t(language, "businessReserveTitle")}</Text>
+              <Text style={styles.whyNowBody}>
+                {`${formatMoney(cashflow.business_reserve_amount)} ${t(language, "businessReserveBody")}`}
+              </Text>
+            </View>
+          ) : null}
+
           <View style={styles.metricRow}>
             <View style={[commonStyles.card, styles.metricCard]}>
               <Text style={styles.metricLabel}>{t(language, "safeToSpend")}</Text>
@@ -844,11 +846,13 @@ export default function HomeScreen() {
 
           <View style={styles.metricRow}>
             <View style={[commonStyles.card, styles.metricCard]}>
-              <Text style={styles.metricLabel}>
+              <Pressable onPress={() => router.push("/edit-daily-needs" as never)} style={styles.metricHeaderButton}>
+                <Text style={styles.metricLabel}>
                 {cashflow.daily_needs_required > 0 && cashflow.daily_needs_buffer <= 0
                   ? t(language, "dailyNeedsToProtect")
                   : t(language, "dailyNeedsCovered")}
-              </Text>
+                </Text>
+              </Pressable>
               <Text style={styles.metricValue}>
                 {formatMoney(cashflow.daily_needs_required > 0 && cashflow.daily_needs_buffer <= 0 ? cashflow.daily_needs_required : cashflow.daily_needs_buffer)}
               </Text>
@@ -860,6 +864,7 @@ export default function HomeScreen() {
                     : cashflow.daily_needs_buffer >= cashflow.daily_needs_required
                       ? homeCopy.fullyCoveredTillNextIncome
                       : homeCopy.ofNeededTillNextIncome(formatMoney(cashflow.daily_needs_required))}
+                {cashflow.baseline_daily_spend > 0 ? ` · ${formatMoney(cashflow.baseline_daily_spend)}/day` : ""}
               </Text>
             </View>
             <View style={[commonStyles.card, styles.metricCard]}>
@@ -1017,28 +1022,16 @@ export default function HomeScreen() {
         <View style={styles.grid}>
           {quickActions.map((action) => (
             <QuickActionTile
-              key={action.label}
+              key={action.key}
               label={action.label}
               hint={action.hint}
               icon={action.icon}
               onPress={() => {
-                if (action.label === t(language, "addUpcomingDueAction")) {
+                if (action.key === "add_due") {
                   router.push("/add-upcoming-due" as never);
                   return;
                 }
-                if (action.label === t(language, "cashReceivedAction")) {
-                  router.push({ pathname: "/add-entry", params: { mode: "cash_received" } });
-                  return;
-                }
-                if (action.label === t(language, "quickActionDayTotal")) {
-                  router.push({ pathname: "/add-entry", params: { mode: "cash_day_total" } });
-                  return;
-                }
-                if (action.label === t(language, "cashInHandAction")) {
-                  router.push({ pathname: "/add-entry", params: { mode: "cash_set" } });
-                  return;
-                }
-                router.push({ pathname: "/add-entry", params: { mode: "cash_spent" } });
+                router.push({ pathname: "/add-entry", params: { mode: action.key } });
               }}
             />
           ))}
@@ -1374,6 +1367,9 @@ const styles = StyleSheet.create({
   metricCard: {
     flex: 1,
     gap: theme.spacing.xs
+  },
+  metricHeaderButton: {
+    alignSelf: "flex-start"
   },
   metricLabel: {
     fontSize: theme.typography.caption,

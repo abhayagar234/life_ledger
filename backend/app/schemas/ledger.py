@@ -20,6 +20,7 @@ class LedgerEntryCreate(BaseModel):
     loan_id: Optional[str] = None
     emi_payment_id: Optional[str] = None
     is_business: Optional[bool] = None
+    money_scope: Optional[str] = None
 
 
 class LedgerEntryRead(BaseModel):
@@ -41,6 +42,7 @@ class LedgerEntryRead(BaseModel):
     loan_id: Optional[str]
     emi_payment_id: Optional[str]
     is_business: Optional[bool]
+    money_scope: Optional[str]
     is_system_generated: bool
     created_at: datetime
     updated_at: datetime

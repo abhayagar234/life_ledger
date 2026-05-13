@@ -8,7 +8,6 @@ import {
   getMonthlySummary,
   getProfile,
   getSpendingSummary,
-  loadSampleStatement,
   listInsights,
   upsertProfile
 } from "../services/api/moneyos";
@@ -20,6 +19,7 @@ import type {
   ProfileOnboardingUpdate,
   ProfileRead,
   SpendingInsightsResponse,
+  MoneyMixType,
   TrackingScope,
   UserType
 } from "../services/api/types";
@@ -45,6 +45,9 @@ type OnboardingDraft = {
   startCashAmount: string;
   salaryDayOfMonth: string;
   businessModeEnabled: boolean;
+  moneyMixType: MoneyMixType;
+  receivesSalaryBesidesBusiness: boolean;
+  businessReserveAmount: string;
 };
 
 type SessionStore = {
@@ -90,7 +93,10 @@ function createDefaultDraft(): OnboardingDraft {
     trackingScope: "personal",
     startCashAmount: "",
     salaryDayOfMonth: "",
-    businessModeEnabled: false
+    businessModeEnabled: false,
+    moneyMixType: "home",
+    receivesSalaryBesidesBusiness: false,
+    businessReserveAmount: ""
   };
 }
 
@@ -122,8 +128,15 @@ function deriveIncomePattern(userType: UserType): IncomePattern {
   }
 }
 
-function deriveNextIncomeInDays(userType: UserType, salaryDayOfMonth: string): number | null {
+function deriveNextIncomeInDays(
+  userType: UserType,
+  salaryDayOfMonth: string,
+  receivesSalaryBesidesBusiness: boolean
+): number | null {
   if ((userType === "salaried" || userType === "family_manager") && salaryDayOfMonth.trim()) {
+    return null;
+  }
+  if (userType === "business_self_employed" && receivesSalaryBesidesBusiness && salaryDayOfMonth.trim()) {
     return null;
   }
   switch (userType) {
@@ -178,23 +191,27 @@ export const useSessionStore = create<SessionStore>()(
         }
         set({ loading: true, error: null });
         try {
-          let userId = get().userId;
-          let displayName = get().displayName || createDemoDisplayName();
-          if (!userId) {
-            if (!get().displayName || get().displayName === "MoneyOS User") {
-              set((state) => ({
-                displayName,
-                onboardingDraft: {
-                  ...state.onboardingDraft,
-                  displayName
-                }
-              }));
+          // Always start fresh on app launch - clear persisted userId and profile, force onboarding
+          let userId: string | null = null;
+          let displayName = createDemoDisplayName();
+
+          set((state) => ({
+            displayName,
+            userId: null,
+            profile: null,
+            onboardingCompleted: false,
+            hasRealData: false,
+            dashboard: createEmptyDashboard(),
+            onboardingDraft: {
+              ...createDefaultDraft(),
+              displayName
             }
-            const login = await demoLogin({ display_name: displayName });
-            userId = login.user_id;
-            displayName = login.display_name;
-            set({ userId, displayName });
-          }
+          }));
+
+          const login = await demoLogin({ display_name: displayName, force_new: true });
+          userId = login.user_id;
+          displayName = login.display_name;
+          set({ userId, displayName });
 
           const profile = await getProfile(userId);
           set((currentState) => ({
@@ -214,7 +231,10 @@ export const useSessionStore = create<SessionStore>()(
                   trackingScope: normalizeTrackingScope(profile.tracking_scope),
                   startCashAmount: profile.start_cash_amount ? String(profile.start_cash_amount) : "",
                   salaryDayOfMonth: profile.salary_day_of_month ? String(profile.salary_day_of_month) : "",
-                  businessModeEnabled: profile.business_mode_enabled
+                  businessModeEnabled: profile.business_mode_enabled,
+                  moneyMixType: profile.money_mix_type,
+                  receivesSalaryBesidesBusiness: profile.receives_salary_besides_business,
+                  businessReserveAmount: profile.business_reserve_amount ? String(profile.business_reserve_amount) : ""
                 }
               : currentState.onboardingDraft
           }));
@@ -313,7 +333,11 @@ export const useSessionStore = create<SessionStore>()(
         }
 
         const derivedIncomePattern = deriveIncomePattern(onboardingDraft.userType);
-        const derivedNextIncomeInDays = deriveNextIncomeInDays(onboardingDraft.userType, onboardingDraft.salaryDayOfMonth);
+        const derivedNextIncomeInDays = deriveNextIncomeInDays(
+          onboardingDraft.userType,
+          onboardingDraft.salaryDayOfMonth,
+          onboardingDraft.receivesSalaryBesidesBusiness
+        );
 
         set({ savingOnboarding: true, error: null });
         try {
@@ -328,7 +352,10 @@ export const useSessionStore = create<SessionStore>()(
             start_cash_amount: onboardingDraft.startCashAmount ? Number(onboardingDraft.startCashAmount) : null,
             salary_day_of_month: onboardingDraft.salaryDayOfMonth ? Number(onboardingDraft.salaryDayOfMonth) : null,
             next_income_in_days: derivedNextIncomeInDays,
-            business_mode_enabled: onboardingDraft.businessModeEnabled
+            business_mode_enabled: onboardingDraft.businessModeEnabled || onboardingDraft.userType === "business_self_employed",
+            money_mix_type: onboardingDraft.moneyMixType,
+            receives_salary_besides_business: onboardingDraft.receivesSalaryBesidesBusiness,
+            business_reserve_amount: onboardingDraft.businessReserveAmount ? Number(onboardingDraft.businessReserveAmount) : null
           };
 
           const profile = await upsertProfile(userId, payload);
@@ -337,7 +364,6 @@ export const useSessionStore = create<SessionStore>()(
             onboardingCompleted: true,
             displayName: payload.display_name
           });
-          await loadSampleStatement(userId);
           await get().refreshDashboard();
           return profile;
         } catch (error) {

@@ -1,9 +1,13 @@
 import { apiRequest } from "./client";
 import type {
   CashflowSummary,
+  ConfirmDueItem,
+  ConfirmDuesResponse,
+  DetectedDueResponse,
   DemoLoginRequest,
   DemoLoginResponse,
   DemoActionResponse,
+  FileUploadResponse,
   InsightCard,
   LedgerEntryCreate,
   LedgerEntryRead,
@@ -14,6 +18,7 @@ import type {
   ProfileRead,
   SpendingInsightsResponse
 } from "./types";
+import { getApiBaseUrl } from "./client";
 
 export function demoLogin(payload: DemoLoginRequest) {
   return apiRequest<DemoLoginResponse>("/auth/demo-login", {
@@ -101,10 +106,53 @@ export function updateBankBalance(
   });
 }
 
+export function updateDailyNeeds(userId: string, amount: number) {
+  return apiRequest<any>("/profile/daily-needs", {
+    method: "PUT",
+    userId,
+    body: JSON.stringify({ amount })
+  });
+}
+
 export function createUpcomingDue(userId: string, payload: UpcomingDueCreate) {
   return apiRequest<UpcomingDueRead>("/upcoming-dues", {
     method: "POST",
     userId,
     body: JSON.stringify(payload)
+  });
+}
+
+export async function uploadImportFile(userId: string, file: { uri: string; name: string; mimeType: string }) {
+  const form = new FormData();
+  form.append("file", {
+    uri: file.uri,
+    name: file.name,
+    type: file.mimeType
+  } as any);
+
+  const url = new URL("/imports/files", getApiBaseUrl());
+  url.searchParams.set("user_id", userId);
+  const response = await fetch(url.toString(), {
+    method: "POST",
+    body: form
+  });
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(body || `Request failed with status ${response.status}`);
+  }
+  return (await response.json()) as FileUploadResponse;
+}
+
+export function getDetectedDues(userId: string, uploadId: string) {
+  return apiRequest<DetectedDueResponse[]>(`/imports/${uploadId}/detected-dues`, {
+    userId
+  });
+}
+
+export function confirmDetectedDues(userId: string, uploadId: string, confirmedDues: ConfirmDueItem[]) {
+  return apiRequest<ConfirmDuesResponse>(`/imports/${uploadId}/confirm-dues`, {
+    method: "POST",
+    userId,
+    body: JSON.stringify({ confirmed_dues: confirmedDues })
   });
 }

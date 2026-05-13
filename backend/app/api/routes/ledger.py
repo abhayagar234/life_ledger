@@ -55,6 +55,7 @@ def create_ledger_entry(
         loan_id=payload.loan_id,
         emi_payment_id=payload.emi_payment_id,
         is_business=payload.is_business,
+        money_scope=payload.money_scope,
     )
     db.add(entry)
     if emi_payment and payload.entry_type.value == "emi_payment":

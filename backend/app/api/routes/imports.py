@@ -48,8 +48,13 @@ async def upload_file(
             content=content,
             force_reprocess=force_reprocess,
         )
-    except RuntimeError as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    except (RuntimeError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception:
+        raise HTTPException(
+            status_code=422,
+            detail="We could not fully read this statement format yet. Please try another file or continue with manual cash/dues."
+        )
 
 
 @router.get("/{upload_id}/detected-dues", response_model=list[DetectedDueResponse])

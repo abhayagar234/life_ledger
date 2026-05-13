@@ -516,7 +516,8 @@ def build_cashflow_summary(db: Session, user_id: str, as_of: date | None = None)
         )
         manual_due_items = _manual_due_items(db, user_id, cycle_start, as_of_date, next_income_date)
         manual_due_total = _manual_due_total(db, user_id, as_of_date, next_income_date)
-        safe_to_spend = _round_money(max(manual_cash - manual_due_total, 0.0))
+        business_reserve = max(float(profile.business_reserve_amount), 0.0) if profile and profile.business_reserve_amount is not None else 0.0
+        safe_to_spend = _round_money(max(manual_cash - manual_due_total - business_reserve, 0.0))
         safe_to_spend_bank_only = 0.0 if cash_is_stale else safe_to_spend
         confirmed_bank_balance = float(profile.bank_balance_confirmed) if profile and profile.bank_balance_confirmed is not None else None
         working_bank_balance = round(max(confirmed_bank_balance or 0.0, 0.0), 2)
@@ -529,7 +530,7 @@ def build_cashflow_summary(db: Session, user_id: str, as_of: date | None = None)
             plain_summary="You can add cash, dues, and important money changes now. Statement history will make the answer smarter later.",
             safe_till_date=None,
             next_income_date=next_income_date,
-            effective_available_money=_round_money(max(manual_cash - manual_due_total, 0.0)),
+            effective_available_money=_round_money(max(manual_cash - manual_due_total - business_reserve, 0.0)),
             liquid_balance=0,
             detected_bank_balance=0,
             working_bank_balance=working_bank_balance,
@@ -537,6 +538,7 @@ def build_cashflow_summary(db: Session, user_id: str, as_of: date | None = None)
             bank_balance_source=profile.bank_balance_source if profile and profile.bank_balance_source else "detected",
             cash_on_hand=round(manual_cash, 2),
             cash_is_stale=cash_is_stale,
+            business_reserve_amount=round(business_reserve, 2),
             upcoming_dues_total=manual_due_total,
             daily_needs_buffer=0,
             daily_needs_required=0,
@@ -633,19 +635,22 @@ def build_cashflow_summary(db: Session, user_id: str, as_of: date | None = None)
     baseline_daily_spend = round(trailing_essential_spend / 30, 2) if trailing_essential_spend > 0 else 0.0
     if baseline_daily_spend == 0 and trailing_total_spend > 0:
         baseline_daily_spend = round((trailing_total_spend * 0.55) / 30, 2)
+    if profile and profile.daily_needs_override is not None and float(profile.daily_needs_override) > 0:
+        baseline_daily_spend = round(float(profile.daily_needs_override), 2)
 
     detected_bank_balance = round(max(bank_observed_balance, 0.0), 2)
     confirmed_bank_balance = float(profile.bank_balance_confirmed) if profile and profile.bank_balance_confirmed is not None else None
     working_bank_balance = round(max(confirmed_bank_balance if confirmed_bank_balance is not None else detected_bank_balance, 0.0), 2)
     bank_balance_needs_confirmation = detected_bank_balance > 0 and confirmed_bank_balance is None
+    business_reserve = max(float(profile.business_reserve_amount), 0.0) if profile and profile.business_reserve_amount is not None else 0.0
 
-    effective_available_money = _round_money(working_bank_balance + manual_cash - protected_dues)
+    effective_available_money = _round_money(working_bank_balance + manual_cash - protected_dues - business_reserve)
     spend_needed_until_income = round(baseline_daily_spend * days_until_income, 2)
     daily_needs_required = round(spend_needed_until_income, 2)
     daily_needs_buffer = round(min(effective_available_money, daily_needs_required), 2)
     safe_leftover = round(effective_available_money - daily_needs_required, 2)
     shortfall_amount = _round_money(daily_needs_required - effective_available_money)
-    effective_available_bank_only = _round_money(working_bank_balance - protected_dues)
+    effective_available_bank_only = _round_money(working_bank_balance - protected_dues - business_reserve)
     safe_leftover_bank_only = round(effective_available_bank_only - daily_needs_required, 2)
     safe_to_spend_bank_only = _round_money(safe_leftover_bank_only)
     shortfall_amount_bank_only = _round_money(daily_needs_required - effective_available_bank_only)
@@ -706,6 +711,8 @@ def build_cashflow_summary(db: Session, user_id: str, as_of: date | None = None)
         explanations.append(f"We included about {_fmt_money(manual_card_due_total)} from manual credit card spends as money to protect later.")
     if profile and profile.start_cash_amount:
         explanations.append(f"Cash on hand includes your declared starting cash of {_fmt_money(float(profile.start_cash_amount))}.")
+    if business_reserve > 0:
+        explanations.append(f"We kept about {_fmt_money(business_reserve)} aside first for business running costs.")
     if next_income_date:
         explanations.append(f"The next income is estimated around {next_income_date.strftime('%b %d')}.")
         if bank_balance_needs_confirmation:
@@ -724,6 +731,8 @@ def build_cashflow_summary(db: Session, user_id: str, as_of: date | None = None)
         watchouts.append("Keep money flexible for now. Savings are safer than locking money away this week.")
     if confidence != "high":
         watchouts.append("This answer is still an estimate. Keep a little extra buffer this week.")
+    if business_reserve > 0:
+        watchouts.append("Some money is being protected first for business running costs.")
     if not watchouts:
         watchouts.append(f"You're steady till {next_income_label}. Keep dues protected and avoid unnecessary big spends.")
 
@@ -749,6 +758,7 @@ def build_cashflow_summary(db: Session, user_id: str, as_of: date | None = None)
         bank_balance_source=profile.bank_balance_source if profile and profile.bank_balance_source else "detected",
         cash_on_hand=round(manual_cash, 2),
         cash_is_stale=cash_is_stale,
+        business_reserve_amount=round(business_reserve, 2),
         upcoming_dues_total=round(protected_dues, 2),
         daily_needs_buffer=daily_needs_buffer,
         daily_needs_required=daily_needs_required,
