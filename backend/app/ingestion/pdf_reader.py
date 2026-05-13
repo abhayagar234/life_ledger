@@ -99,10 +99,100 @@ def _stitch_tables(tables_per_page: list[list[list]]) -> list[list]:
     best_table = [all_tables[0][0]]
     for table in all_tables:
         for row in table[1:]:
+            if not any(str(cell).strip() for cell in row if cell is not None):
+                continue
+            if any(_looks_like_date(cell) for cell in row[:2]):
+                best_table.append(row)
+                continue
             if not _looks_like_header_row(row):
                 best_table.append(row)
 
     return best_table
+
+
+def _repair_weak_header(matrix: list[list]) -> list[list]:
+    if not matrix:
+        return matrix
+
+    first_row = matrix[0]
+    normalized = [_normalize_header(cell) for cell in first_row]
+    non_empty = [cell for cell in normalized if cell]
+    only_balance_header = len(non_empty) <= 1 and "balance" in non_empty
+
+    if not only_balance_header or len(matrix) < 2:
+        return matrix
+
+    first_txn_index = None
+    for index, row in enumerate(matrix[1:], start=1):
+        if len(row) >= 6 and any(_looks_like_date(cell) for cell in row[:2]):
+            first_txn_index = index
+            break
+    if first_txn_index is None:
+        return matrix
+
+    synthetic_header = ["transaction date", "value date", "description", "reference", "debit", "credit", "balance"]
+    width = max(len(first_row), len(matrix[first_txn_index]))
+    padded_header = synthetic_header[:width] + [""] * max(0, width - len(synthetic_header))
+    return [padded_header, *matrix[first_txn_index:]]
+
+
+ICICI_ROW_RE = re.compile(
+    r"^\s*(\d+)\s+(\d{2}\.\d{2}\.\d{4})\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})\s*$"
+)
+
+
+def _parse_text_fallback(pdf_file: pdfplumber.PDF) -> list[list]:
+    rows: list[list] = []
+    description_parts: list[str] = []
+    prev_balance: float | None = None
+
+    for page in pdf_file.pages:
+        text = page.extract_text() or ""
+        for raw_line in text.splitlines():
+            line = " ".join(raw_line.split())
+            if not line:
+                continue
+            lower = line.lower()
+            if (
+                "statement of transactions" in lower
+                or "transaction withdrawal deposit balance" in lower
+                or "transaction remarks" in lower
+                or "date amount (inr)" in lower
+                or lower in {"1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12"}
+            ):
+                continue
+
+            match = ICICI_ROW_RE.match(line)
+            if match:
+                serial_no, txn_date, amount_text, balance_text = match.groups()
+                amount_value = float(amount_text.replace(",", ""))
+                balance_value = float(balance_text.replace(",", ""))
+                debit = ""
+                credit = ""
+
+                if prev_balance is not None:
+                    delta = round(balance_value - prev_balance, 2)
+                    if abs(delta + amount_value) < 1:
+                        debit = amount_text
+                    elif abs(delta - amount_value) < 1:
+                        credit = amount_text
+                    else:
+                        debit = amount_text
+                else:
+                    debit = amount_text
+
+                description = " ".join(description_parts).strip()
+                rows.append([serial_no, txn_date, description, "", debit, credit, balance_text])
+                description_parts = []
+                prev_balance = balance_value
+                continue
+
+            description_parts.append(line)
+
+    if not rows:
+        return []
+
+    return [["s no", "transaction date", "description", "reference", "debit", "credit", "balance"], *rows]
 
 
 def read_pdf_rows(content: bytes) -> ParsedSheet:
@@ -137,7 +227,9 @@ def read_pdf_rows(content: bytes) -> ParsedSheet:
         except Exception:
             tables_per_page.append([])
 
-    combined_matrix = _stitch_tables(tables_per_page)
+    combined_matrix = _repair_weak_header(_stitch_tables(tables_per_page))
+    if not combined_matrix or len(combined_matrix) <= 1:
+        combined_matrix = _parse_text_fallback(pdf_file)
 
     if not combined_matrix or all(not row for row in combined_matrix):
         raise RuntimeError("PDF contains no readable table data.")

@@ -23,6 +23,17 @@ def _ensure_financial_profile_columns() -> None:
             connection.execute(text("ALTER TABLE financial_profiles ADD COLUMN bank_balance_source VARCHAR(20)"))
         if "bank_balance_last_confirmed_at" not in existing_columns:
             connection.execute(text("ALTER TABLE financial_profiles ADD COLUMN bank_balance_last_confirmed_at TIMESTAMP"))
+        if "money_mix_type" not in existing_columns:
+            connection.execute(text("ALTER TABLE financial_profiles ADD COLUMN money_mix_type VARCHAR(20) DEFAULT 'home'"))
+        if "receives_salary_besides_business" not in existing_columns:
+            connection.execute(text("ALTER TABLE financial_profiles ADD COLUMN receives_salary_besides_business BOOLEAN DEFAULT FALSE"))
+        if "business_reserve_amount" not in existing_columns:
+            connection.execute(text("ALTER TABLE financial_profiles ADD COLUMN business_reserve_amount NUMERIC"))
+        if "daily_needs_override" not in existing_columns:
+            connection.execute(text("ALTER TABLE financial_profiles ADD COLUMN daily_needs_override NUMERIC"))
+        ledger_columns = {column["name"] for column in inspector.get_columns("ledger_entries")} if "ledger_entries" in inspector.get_table_names() else set()
+        if "ledger_entries" in inspector.get_table_names() and "money_scope" not in ledger_columns:
+            connection.execute(text("ALTER TABLE ledger_entries ADD COLUMN money_scope VARCHAR(20)"))
 
 
 @asynccontextmanager

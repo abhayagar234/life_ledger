@@ -46,6 +46,8 @@ def normalize_date(value: object) -> date | None:
         "%Y-%m-%d",
         "%d-%m-%Y",
         "%d/%m/%Y",
+        "%d.%m.%Y",
+        "%d.%m.%y",
         "%Y/%m/%d",
         "%d %b %Y",
         "%d-%b-%y",
@@ -114,6 +116,41 @@ def extract_counterparty(description_clean: str) -> str | None:
     if not tokens:
         return None
     return " ".join(tokens[:4]).strip() or None
+
+
+def extract_upi_merchant(description_raw: str) -> str | None:
+    """
+    Extract merchant from UPI transactions.
+    Handles both SBI and ICICI formats with PDF line-wrapping.
+
+    SBI format: UPI/DR|CR/<ref>/<merchant> or UPI/DR/<ref>/<merchant>/...
+    ICICI format: UPI/<merchant>/<handle>/<bank_info>...
+    """
+    if not description_raw:
+        return None
+
+    # Normalize: collapse multiple whitespace/newlines into single space
+    normalized = " ".join(description_raw.split())
+    normalized_lower = normalized.lower()
+
+    # Try SBI format: UPI/DR|CR/digits/merchant (merchant ends at / or becomes last part)
+    match = re.search(r'upi/(?:dr|cr)/\d+/([^/]+?)(?:/|$)', normalized_lower, re.IGNORECASE)
+    if match:
+        merchant = match.group(1).strip()
+        if merchant and not re.fullmatch(r'[\d\s]+', merchant):
+            return merchant
+
+    # Try ICICI format: UPI/merchant/handle/... (merchant is 2nd part before next /)
+    match = re.search(r'upi/([^/]+?)/[^/]+/(?:upi|hdfc|union|icici|axis|sbi|bank)?', normalized_lower, re.IGNORECASE)
+    if match:
+        potential_merchant = match.group(1).strip()
+        # Reject if it looks like a transaction code (all digits or very short)
+        if (potential_merchant
+            and not re.fullmatch(r'[\d\s]+', potential_merchant)
+            and len(potential_merchant) > 2):
+            return potential_merchant
+
+    return None
 
 
 def infer_category(description_clean: str) -> tuple[str | None, str | None, bool]:

@@ -25,6 +25,7 @@ class LedgerEntry(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     loan_id: Mapped[Optional[str]] = mapped_column(ForeignKey("loans.id"), nullable=True, index=True)
     emi_payment_id: Mapped[Optional[str]] = mapped_column(ForeignKey("emi_payments.id"), nullable=True, index=True)
     is_business: Mapped[Optional[bool]] = mapped_column(nullable=True)
+    money_scope: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
     is_system_generated: Mapped[bool] = mapped_column(default=False, nullable=False)
 
     user = relationship("User", back_populates="ledger_entries")

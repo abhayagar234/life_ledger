@@ -4,8 +4,10 @@ import hashlib
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from decimal import Decimal
+from io import BytesIO
 
 from sqlalchemy.orm import Session
+import pdfplumber
 
 from app.categorization.engine import categorize_transaction
 from app.categorization.types import CategorizationInput
@@ -15,6 +17,7 @@ from app.ingestion.mappers import map_columns
 from app.ingestion.normalizers import (
     clean_description,
     extract_counterparty,
+    extract_upi_merchant,
     normalize_date,
     normalize_direction,
     parse_amount,
@@ -58,6 +61,31 @@ def read_rows_for_file_type(file_type: str, content: bytes) -> ParsedTabularFile
         selected_sheet=parsed_sheet.sheet_name,
         header_row_index=parsed_sheet.header_row_index,
     )
+
+
+def extract_bank_hint_for_file_type(file_type: str, content: bytes) -> str | None:
+    if file_type != "pdf":
+        return None
+    try:
+        with pdfplumber.open(BytesIO(content)) as pdf:
+            if not pdf.pages:
+                return None
+            text = pdf.pages[0].extract_text() or ""
+    except Exception:
+        return None
+
+    lowered = text.lower()
+    if "state bank of india" in lowered or "\nsbi" in lowered or " sbi " in lowered:
+        return "sbi"
+    if "hdfc bank" in lowered:
+        return "hdfc"
+    if "icici bank" in lowered:
+        return "icici"
+    if "axis bank" in lowered:
+        return "axis"
+    if "kotak mahindra" in lowered or "kotak bank" in lowered:
+        return "kotak"
+    return None
 
 
 def _first_non_empty(row: dict, keys: list[str]) -> object | None:
@@ -128,7 +156,8 @@ def process_import_file(
             )
 
     parsed_file = read_rows_for_file_type(file_type, content)
-    source_name, source_type = detect_source(file_name, parsed_file.headers, parsed_file.sheet_names)
+    bank_hint = extract_bank_hint_for_file_type(file_type, content)
+    source_name, source_type = detect_source(file_name, parsed_file.headers, parsed_file.sheet_names, bank_hint)
     mapping = map_columns(parsed_file.headers)
 
     import_file = ImportFile(
@@ -186,7 +215,7 @@ def process_import_file(
 
         description_raw = str(raw_description or "")
         description_clean = clean_description(description_raw)
-        counterparty = extract_counterparty(description_clean)
+        counterparty = extract_upi_merchant(description_raw) or extract_counterparty(description_clean)
 
         if parse_errors:
             import_row.parse_status = "invalid"

@@ -46,9 +46,35 @@ const dayTotalOption = {
   icon: "calculator-outline"
 } as const;
 
-type EntryOptionKey = (typeof entryOptions)[number]["key"] | typeof duePaidOption.key | typeof dayTotalOption.key;
+const businessEntryOptions = [
+  {
+    key: "business_customer_payment",
+    title: "Customer Payment Received",
+    subtitle: "Money came in from a customer, sale, or service",
+    icon: "cash-outline"
+  },
+  {
+    key: "business_supplier_expense",
+    title: "Supplier Expense",
+    subtitle: "Stock, supplier, or shop-running payment",
+    icon: "cube-outline"
+  },
+  {
+    key: "business_cash_expense",
+    title: "Business Cash Expense",
+    subtitle: "Daily business spend paid outside what statements can see",
+    icon: "briefcase-outline"
+  }
+] as const;
+
+type EntryOptionKey =
+  | (typeof entryOptions)[number]["key"]
+  | (typeof businessEntryOptions)[number]["key"]
+  | typeof duePaidOption.key
+  | typeof dayTotalOption.key;
 type SourceOptionKey = "cash" | "online" | "card" | "split";
 type DuePaymentChoice = "full" | "minimum";
+type MoneyScope = "home" | "business" | "mixed";
 
 const sourceOptions: Array<{
   value: SourceOptionKey;
@@ -102,8 +128,10 @@ function buildPayload(
   amount: number,
   note: string,
   source: Exclude<SourceOptionKey, "split">,
+  moneyScope: MoneyScope,
   duePrefill?: DuePrefill
 ): LedgerEntryCreate {
+  const isBusinessScope = moneyScope === "business" || moneyScope === "mixed";
   if (option === "cash_set") {
     return {
       entry_type: "cash_adjustment",
@@ -112,7 +140,9 @@ function buildPayload(
       account_type: "cash",
       cash_direction: "set",
       description: note || "Manual cash in hand update",
-      source_label: "mobile_quick_cash"
+      source_label: "mobile_quick_cash",
+      is_business: isBusinessScope,
+      money_scope: moneyScope
     };
   }
 
@@ -124,7 +154,47 @@ function buildPayload(
       account_type: source === "online" ? "bank" : "cash",
       cash_direction: "in",
       description: note || (source === "online" ? "Manual online or UPI money received" : "Manual cash received"),
-      source_label: source === "online" ? "mobile_quick_bank" : "mobile_quick_cash"
+      source_label: source === "online" ? "mobile_quick_bank" : "mobile_quick_cash",
+      is_business: isBusinessScope,
+      money_scope: moneyScope
+    };
+  }
+
+  if (option === "business_customer_payment") {
+    return {
+      entry_type: "income",
+      amount,
+      entry_date: todayIso(),
+      account_type: source === "online" ? "bank" : "cash",
+      cash_direction: "in",
+      category_code: "business_income",
+      description: note || (source === "online" ? "Customer payment received in bank or UPI" : "Customer payment received in cash"),
+      source_label: source === "online" ? "business_customer_bank" : "business_customer_cash",
+      is_business: true,
+      money_scope: moneyScope
+    };
+  }
+
+  if (option === "business_supplier_expense" || option === "business_cash_expense") {
+    const descriptionByOption = {
+      business_supplier_expense: source === "online" ? "Supplier or stock expense paid from bank or UPI" : "Supplier or stock expense paid in cash",
+      business_cash_expense: source === "online" ? "Business running expense paid from bank or UPI" : "Business running expense paid in cash"
+    } as const;
+    const sourceLabelByOption = {
+      business_supplier_expense: source === "online" ? "business_supplier_bank" : "business_supplier_cash",
+      business_cash_expense: source === "online" ? "business_expense_bank" : "business_expense_cash"
+    } as const;
+    return {
+      entry_type: "expense",
+      amount,
+      entry_date: todayIso(),
+      account_type: source === "online" ? "bank" : "cash",
+      cash_direction: "out",
+      category_code: "business_expense",
+      description: note || descriptionByOption[option],
+      source_label: sourceLabelByOption[option],
+      is_business: true,
+      money_scope: moneyScope
     };
   }
 
@@ -136,7 +206,9 @@ function buildPayload(
       account_type: "cash",
       cash_direction: "out",
       description: note || "Daily cash total",
-      source_label: "daily_cash_total"
+      source_label: "daily_cash_total",
+      is_business: isBusinessScope,
+      money_scope: moneyScope
     };
   }
 
@@ -155,7 +227,9 @@ function buildPayload(
           ? "mobile_quick_bank"
           : "mobile_quick_cash"
         : duePrefill?.dueKey ?? (source === "online" ? "mobile_quick_bank" : "mobile_quick_cash"),
-      emi_payment_id: duePrefill?.emiPaymentId ?? null
+      emi_payment_id: duePrefill?.emiPaymentId ?? null,
+      is_business: isBusinessScope,
+      money_scope: moneyScope
     };
   }
 
@@ -173,7 +247,9 @@ function buildPayload(
           ? "Manual credit card spend"
           : "Manual cash spent"),
     source_label:
-      source === "online" ? "mobile_quick_bank" : source === "card" ? "mobile_quick_card" : "mobile_quick_cash"
+      source === "online" ? "mobile_quick_bank" : source === "card" ? "mobile_quick_card" : "mobile_quick_cash",
+    is_business: isBusinessScope,
+    money_scope: moneyScope
   };
 }
 
@@ -183,19 +259,20 @@ function buildPayloads(
   note: string,
   source: SourceOptionKey,
   splitCashAmount: number,
+  moneyScope: MoneyScope,
   duePrefill?: DuePrefill
 ): LedgerEntryCreate[] {
   if (source !== "split") {
-    return [buildPayload(option, amount, note, source, duePrefill)];
+    return [buildPayload(option, amount, note, source, moneyScope, duePrefill)];
   }
 
   const onlineAmount = Math.max(amount - splitCashAmount, 0);
   const payloads: LedgerEntryCreate[] = [];
   if (splitCashAmount > 0) {
-    payloads.push(buildPayload(option, splitCashAmount, note, "cash", duePrefill));
+    payloads.push(buildPayload(option, splitCashAmount, note, "cash", moneyScope, duePrefill));
   }
   if (onlineAmount > 0) {
-    payloads.push(buildPayload(option, onlineAmount, note, "online", duePrefill));
+    payloads.push(buildPayload(option, onlineAmount, note, "online", moneyScope, duePrefill));
   }
   return payloads;
 }
@@ -215,11 +292,16 @@ export default function AddEntryScreen() {
   const refreshDashboard = useSessionStore((state) => state.refreshDashboard);
   const markHasRealData = useSessionStore((state) => state.markHasRealData);
   const currentCashOnHand = useSessionStore((state) => state.dashboard.cashflowSummary?.cash_on_hand ?? 0);
+  const profile = useSessionStore((state) => state.profile);
+  const isBusinessUser = profile?.user_type === "business_self_employed" || profile?.receives_salary_besides_business;
   const initialMode =
     params.mode === "cash_received" ||
     params.mode === "cash_spent" ||
     params.mode === "cash_day_total" ||
     params.mode === "due_paid" ||
+    params.mode === "business_customer_payment" ||
+    params.mode === "business_supplier_expense" ||
+    params.mode === "business_cash_expense" ||
     params.mode === "cash_set"
       ? params.mode
       : "cash_set";
@@ -229,6 +311,7 @@ export default function AddEntryScreen() {
   const [amount, setAmount] = useState(typeof params.amount === "string" ? params.amount : "");
   const [duePaymentChoice, setDuePaymentChoice] = useState<DuePaymentChoice>("full");
   const [minimumAmount, setMinimumAmount] = useState("");
+  const [moneyScope, setMoneyScope] = useState<MoneyScope>("home");
   const [isBorrowedMoney, setIsBorrowedMoney] = useState(false);
   const [borrowedDueDate, setBorrowedDueDate] = useState(offsetDateIso(30));
   const [note, setNote] = useState(typeof params.note === "string" ? params.note : "");
@@ -247,6 +330,13 @@ export default function AddEntryScreen() {
       if (duePrefill.dueName) {
         return [...entryOptions, duePaidOption];
       }
+      if (
+        selected === "business_customer_payment" ||
+        selected === "business_supplier_expense" ||
+        selected === "business_cash_expense"
+      ) {
+        return businessEntryOptions;
+      }
       if (selected === "cash_day_total") {
         return [dayTotalOption];
       }
@@ -264,6 +354,7 @@ export default function AddEntryScreen() {
     return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
   }, [params.amount]);
   const isCreditCardDue = selected === "due_paid" && isCreditCardDueName(duePrefill.dueName);
+  const shouldShowMoneyScope = profile?.user_type === "business_self_employed" || profile?.receives_salary_besides_business;
   const suggestedMinimumAmount = useMemo(() => {
     if (!fullDueAmount) {
       return null;
@@ -271,6 +362,15 @@ export default function AddEntryScreen() {
     return Math.max(Math.round(fullDueAmount * 0.03), 1);
   }, [fullDueAmount]);
   const availableSourceOptions = useMemo(() => {
+    if (selected === "business_customer_payment") {
+      return sourceOptions.filter((option) => option.value !== "card");
+    }
+    if (
+      selected === "business_supplier_expense" ||
+      selected === "business_cash_expense"
+    ) {
+      return sourceOptions.filter((option) => option.value !== "card");
+    }
     if (selected === "cash_spent") {
       return sourceOptions;
     }
@@ -298,11 +398,22 @@ export default function AddEntryScreen() {
       params.mode === "cash_spent" ||
       params.mode === "cash_day_total" ||
       params.mode === "due_paid" ||
+      params.mode === "business_customer_payment" ||
+      params.mode === "business_supplier_expense" ||
+      params.mode === "business_cash_expense" ||
       params.mode === "cash_set"
     ) {
       setSelected(params.mode);
     }
   }, [params.mode]);
+
+  useEffect(() => {
+    if (!shouldShowMoneyScope) {
+      setMoneyScope("home");
+      return;
+    }
+    setMoneyScope(profile?.money_mix_type === "business" || profile?.money_mix_type === "mixed" ? profile.money_mix_type : "home");
+  }, [profile?.money_mix_type, shouldShowMoneyScope]);
 
   useEffect(() => {
     if (!isCreditCardDue || !suggestedMinimumAmount || minimumAmount.trim()) {
@@ -353,6 +464,21 @@ export default function AddEntryScreen() {
         ? "Use this for money received into bank or UPI that you want reflected before the next import."
         : "Good for informal income, cash collections, or money received outside the bank.";
     }
+    if (selected === "business_customer_payment") {
+      return source === "online"
+        ? "Use this when a customer paid into bank or UPI and you want business money visible now."
+        : "Use this when customer money came in cash and you want the business side updated now.";
+    }
+    if (selected === "business_supplier_expense") {
+      return source === "split"
+        ? "Use this when stock or supplier money went partly in cash and partly online."
+        : "Use this when supplier, stock, or running costs have already gone out and should reduce the business side now.";
+    }
+    if (selected === "business_cash_expense") {
+      return source === "split"
+        ? "Use this when a business expense was split between cash and online."
+        : "Use this for daily shop, clinic, salon, tuition, or service running costs outside what the statement can see yet.";
+    }
     if (selected === "due_paid" && isCreditCardDue) {
       return duePaymentChoice === "minimum"
         ? "Minimum payment keeps the rest of the card balance visible, so the app does not overstate free money."
@@ -396,6 +522,33 @@ export default function AddEntryScreen() {
                 onPress={() => setSource(option.value)}
               />
             ))}
+          </View>
+        ) : null}
+
+        {shouldShowMoneyScope ? (
+          <View style={styles.field}>
+            <Text style={styles.label}>{t(language, "moneyMixQuestion")}</Text>
+            <ChoiceCard
+              title={t(language, "scopeHome")}
+              subtitle={t(language, "scopeHomeHint")}
+              icon="home-outline"
+              selected={moneyScope === "home"}
+              onPress={() => setMoneyScope("home")}
+            />
+            <ChoiceCard
+              title={t(language, "scopeBusiness")}
+              subtitle={t(language, "scopeBusinessHint")}
+              icon="storefront-outline"
+              selected={moneyScope === "business"}
+              onPress={() => setMoneyScope("business")}
+            />
+            <ChoiceCard
+              title={t(language, "scopeMixed")}
+              subtitle={t(language, "scopeMixedHint")}
+              icon="git-merge-outline"
+              selected={moneyScope === "mixed"}
+              onPress={() => setMoneyScope("mixed")}
+            />
           </View>
         ) : null}
 
@@ -500,14 +653,24 @@ export default function AddEntryScreen() {
           <TextInput
             value={note}
             onChangeText={setNote}
-            placeholder="Optional: school fees, mandi sale, wallet cash"
+            placeholder={
+              isBusinessUser
+                ? "Optional: ola driver payment, local shop sale, tyre company, part cash part UPI"
+                : "Optional: school fees, mandi sale, wallet cash"
+            }
             placeholderTextColor={theme.colors.textMuted}
             style={styles.input}
           />
         </View>
 
         <Text style={styles.noteText}>{helperText}</Text>
-        {(selected === "cash_spent" || selected === "cash_day_total" || selected === "due_paid") && source !== "online" && source !== "card" ? (
+        {(
+          selected === "cash_spent" ||
+          selected === "cash_day_total" ||
+          selected === "due_paid" ||
+          selected === "business_supplier_expense" ||
+          selected === "business_cash_expense"
+        ) && source !== "online" && source !== "card" ? (
           <Text style={styles.noteText}>{`Cash on hand right now: Rs ${Math.round(currentCashOnHand).toLocaleString("en-IN")}`}</Text>
         ) : null}
       </View>
@@ -563,7 +726,17 @@ export default function AddEntryScreen() {
             }
           }
 
-          if ((selected === "cash_spent" || selected === "cash_day_total" || selected === "due_paid") && source === "cash" && numericAmount > currentCashOnHand) {
+          if (
+            (
+              selected === "cash_spent" ||
+              selected === "cash_day_total" ||
+              selected === "due_paid" ||
+              selected === "business_supplier_expense" ||
+              selected === "business_cash_expense"
+            ) &&
+            source === "cash" &&
+            numericAmount > currentCashOnHand
+          ) {
             Alert.alert(
               "Cash is short",
               "This amount is more than your current cash on hand. Choose Cash + Online / UPI if the payment was split, or choose Online / UPI."
@@ -573,7 +746,7 @@ export default function AddEntryScreen() {
 
           setSaving(true);
           try {
-            const payloads = buildPayloads(selected, numericAmount, note.trim(), source, numericSplitCashAmount, duePrefill);
+            const payloads = buildPayloads(selected, numericAmount, note.trim(), source, numericSplitCashAmount, moneyScope, duePrefill);
             for (const payload of payloads) {
               await createLedgerEntry(userId, payload);
             }

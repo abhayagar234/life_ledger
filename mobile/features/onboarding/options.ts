@@ -1,4 +1,4 @@
-import type { IncomePattern, TrackingScope, UserType } from "../../services/api/types";
+import type { IncomePattern, MoneyMixType, TrackingScope, UserType } from "../../services/api/types";
 import type { LanguageCode } from "../../i18n";
 
 const userTypeOptionsByLanguage: Record<LanguageCode, Array<{
@@ -88,4 +88,33 @@ export function getIncomePatternOptions(language: LanguageCode) {
 
 export function getTrackingScopeOptions(language: LanguageCode) {
   return trackingScopeOptionsByLanguage[language];
+}
+
+const moneyMixOptionsByLanguage: Record<
+  LanguageCode,
+  Array<{
+    value: MoneyMixType;
+    title: string;
+    subtitle: string;
+  }>
+> = {
+  en: [
+    { value: "home", title: "Home money only", subtitle: "Business money stays separate" },
+    { value: "business", title: "Business money only", subtitle: "You mainly want the business side visible" },
+    { value: "mixed", title: "Home + business mixed", subtitle: "The same money is used across both" }
+  ],
+  hi: [
+    { value: "home", title: "सिर्फ घर का पैसा", subtitle: "व्यवसाय का पैसा अलग रहता है" },
+    { value: "business", title: "सिर्फ व्यवसाय का पैसा", subtitle: "अभी मुख्यतः व्यवसाय का पक्ष दिखाना है" },
+    { value: "mixed", title: "घर + व्यवसाय मिला हुआ", subtitle: "एक ही पैसा दोनों जगह चलता है" }
+  ],
+  mr: [
+    { value: "home", title: "फक्त घरचे पैसे", subtitle: "व्यवसायाचे पैसे वेगळे राहतात" },
+    { value: "business", title: "फक्त व्यवसायाचे पैसे", subtitle: "आत्ता मुख्यतः व्यवसायाचा भाग दिसावा" },
+    { value: "mixed", title: "घर + व्यवसाय मिसळलेले", subtitle: "एकाच पैशातून दोन्ही चालते" }
+  ]
+};
+
+export function getMoneyMixOptions(language: LanguageCode) {
+  return moneyMixOptionsByLanguage[language];
 }

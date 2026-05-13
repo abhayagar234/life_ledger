@@ -7,6 +7,7 @@ export type UserType =
 
 export type IncomePattern = "daily" | "weekly" | "monthly" | "seasonal" | "mixed";
 export type TrackingScope = "personal" | "household" | "home_and_business";
+export type MoneyMixType = "home" | "business" | "mixed";
 
 export type DemoLoginRequest = {
   display_name: string;
@@ -34,6 +35,13 @@ export type ProfileRead = {
   salary_day_of_month: number | null;
   next_income_in_days: number | null;
   business_mode_enabled: boolean;
+  money_mix_type: MoneyMixType;
+  receives_salary_besides_business: boolean;
+  business_reserve_amount: number | null;
+  daily_needs_override: number | null;
+  bank_balance_confirmed: number | null;
+  bank_balance_source: string | null;
+  bank_balance_last_confirmed_at: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -50,6 +58,9 @@ export type ProfileOnboardingUpdate = {
   salary_day_of_month?: number | null;
   next_income_in_days?: number | null;
   business_mode_enabled: boolean;
+  money_mix_type: MoneyMixType;
+  receives_salary_besides_business: boolean;
+  business_reserve_amount?: number | null;
 };
 
 export type CategorySpendItem = {
@@ -114,6 +125,7 @@ export type CashflowSummary = {
   liquid_balance: number;
   cash_on_hand: number;
   cash_is_stale: boolean;
+  business_reserve_amount: number;
   upcoming_dues_total: number;
   daily_needs_buffer: number;
   daily_needs_required: number;
@@ -163,6 +175,7 @@ export type LedgerEntryCreate = {
   loan_id?: string | null;
   emi_payment_id?: string | null;
   is_business?: boolean | null;
+  money_scope?: MoneyMixType | null;
 };
 
 export type LedgerEntryRead = {
@@ -182,6 +195,7 @@ export type LedgerEntryRead = {
   loan_id: string | null;
   emi_payment_id: string | null;
   is_business: boolean | null;
+  money_scope: MoneyMixType | null;
   is_system_generated: boolean;
   created_at: string;
   updated_at: string;
@@ -189,6 +203,57 @@ export type LedgerEntryRead = {
 
 export type DemoActionResponse = {
   status: string;
+  message: string;
+};
+
+export type ImportPreviewRow = {
+  transaction_date: string;
+  amount: number;
+  direction: string;
+  description_clean: string;
+  dedupe_status: string;
+};
+
+export type FileUploadResponse = {
+  upload_id: string;
+  file_name: string;
+  source_name: string;
+  source_type: string;
+  file_type: string;
+  selected_sheet: string | null;
+  header_row_index: number | null;
+  status: string;
+  message: string;
+  total_rows: number;
+  imported_rows: number;
+  duplicate_rows: number;
+  error_rows: number;
+  error_samples: string[];
+  preview: ImportPreviewRow[];
+  uploaded_at: string;
+};
+
+export type DetectedDueResponse = {
+  counterparty_name: string;
+  amount: number;
+  frequency: string;
+  next_due_estimate: string | null;
+  confidence: number;
+  category_code: string;
+  sample_dates: string[];
+  transaction_ids: string[];
+};
+
+export type ConfirmDueItem = {
+  counterparty_name: string;
+  amount: number;
+  frequency: string;
+  next_due_date: string;
+  custom_name?: string | null;
+};
+
+export type ConfirmDuesResponse = {
+  created_loans: string[];
   message: string;
 };
 
@@ -213,4 +278,8 @@ export type UpcomingDueRead = {
 export type ProfileBankBalanceUpdate = {
   amount: number;
   source: "detected" | "manual";
+};
+
+export type ProfileDailyNeedsUpdate = {
+  amount: number;
 };

@@ -1,6 +1,4 @@
 from collections.abc import Iterable
-
-
 import re
 
 
@@ -10,10 +8,28 @@ def normalize_header_name(value: str) -> str:
     return " ".join(lowered.split())
 
 
-def detect_source(file_name: str, headers: Iterable[str], sheet_names: Iterable[str] | None = None) -> tuple[str, str]:
+def detect_source(
+    file_name: str,
+    headers: Iterable[str],
+    sheet_names: Iterable[str] | None = None,
+    bank_hint: str | None = None,
+) -> tuple[str, str]:
     normalized_headers = {normalize_header_name(header) for header in headers}
     lowered_name = (file_name or "").lower()
     normalized_sheets = {normalize_header_name(sheet) for sheet in (sheet_names or [])}
+
+    if bank_hint:
+        normalized_hint = normalize_header_name(bank_hint)
+        if "state bank" in normalized_hint or normalized_hint == "sbi":
+            return ("sbi_bank_like", "bank")
+        if "hdfc" in normalized_hint:
+            return ("hdfc_bank_like", "bank")
+        if "icici" in normalized_hint:
+            return ("icici_bank_like", "bank")
+        if "axis" in normalized_hint:
+            return ("axis_bank_like", "bank")
+        if "kotak" in normalized_hint:
+            return ("kotak_bank_like", "bank")
 
     if "paytm" in lowered_name or "wallet" in lowered_name or "wallet" in normalized_headers:
         return ("wallet_export_like", "wallet")

@@ -34,6 +34,7 @@ class CashflowSummaryResponse(BaseModel):
     bank_balance_source: str = "detected"
     cash_on_hand: float
     cash_is_stale: bool = False
+    business_reserve_amount: float = 0
     upcoming_dues_total: float
     daily_needs_buffer: float
     daily_needs_required: float

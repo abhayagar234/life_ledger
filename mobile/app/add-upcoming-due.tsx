@@ -16,6 +16,8 @@ function todayIso() {
 export default function AddUpcomingDueScreen() {
   const userId = useSessionStore((state) => state.userId);
   const language = useSessionStore((state) => state.onboardingDraft.preferredLanguage);
+  const profile = useSessionStore((state) => state.profile);
+  const isBusinessUser = profile?.user_type === "business_self_employed" || profile?.receives_salary_besides_business;
   const refreshDashboard = useSessionStore((state) => state.refreshDashboard);
   const markHasRealData = useSessionStore((state) => state.markHasRealData);
   const [name, setName] = useState("");
@@ -51,7 +53,19 @@ export default function AddUpcomingDueScreen() {
           <TextInput
             value={name}
             onChangeText={setName}
-            placeholder={language === "hi" ? "उदाहरण: स्कूल फीस, बाइक EMI, किराया" : language === "mr" ? "उदाहरण: शाळेची फी, बाईक EMI, भाडे" : "Example: School fees, Bike EMI, Rent"}
+            placeholder={
+              isBusinessUser
+                ? language === "hi"
+                  ? "उदाहरण: रमेश सैलरी, टायर कंपनी भुगतान, दुकान किराया"
+                  : language === "mr"
+                    ? "उदाहरण: रमेश पगार, टायर कंपनी पेमेंट, दुकान भाडे"
+                    : "Example: Ramesh salary, tyre company payment, shop rent"
+                : language === "hi"
+                  ? "उदाहरण: स्कूल फीस, बाइक EMI, किराया"
+                  : language === "mr"
+                    ? "उदाहरण: शाळेची फी, बाईक EMI, भाडे"
+                    : "Example: School fees, Bike EMI, Rent"
+            }
             placeholderTextColor={theme.colors.textMuted}
             style={styles.input}
           />
@@ -108,7 +122,19 @@ export default function AddUpcomingDueScreen() {
           <TextInput
             value={notes}
             onChangeText={setNotes}
-            placeholder={language === "hi" ? "वैकल्पिक: अप्रैल स्कूल फीस, स्कूटर EMI" : language === "mr" ? "पर्यायी: एप्रिल शाळेची फी, स्कूटर EMI" : "Optional: April school fee, scooter EMI"}
+            placeholder={
+              isBusinessUser
+                ? language === "hi"
+                  ? "वैकल्पिक: आधा नकद, आधा UPI / 9 स्टाफ में से रमेश"
+                  : language === "mr"
+                    ? "पर्यायी: अर्धे रोख, अर्धे UPI / 9 स्टाफपैकी रमेश"
+                    : "Optional: part cash part UPI / Ramesh out of 9 staff"
+                : language === "hi"
+                  ? "वैकल्पिक: अप्रैल स्कूल फीस, स्कूटर EMI"
+                  : language === "mr"
+                    ? "पर्यायी: एप्रिल शाळेची फी, स्कूटर EMI"
+                    : "Optional: April school fee, scooter EMI"
+            }
             placeholderTextColor={theme.colors.textMuted}
             style={styles.input}
           />
