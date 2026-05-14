@@ -198,6 +198,28 @@ export default function ImportStatementScreen() {
               </View>
             ) : null}
           </View>
+          <View style={styles.insightsRow}>
+            {importSummary.most_spent_category ? (
+              <View style={styles.insightBadge}>
+                <Text style={styles.insightLabel}>Most Spent</Text>
+                <Text style={styles.insightCategory}>{importSummary.most_spent_category}</Text>
+              </View>
+            ) : null}
+            {importSummary.date_range ? (
+              <View style={styles.insightBadge}>
+                <Text style={styles.insightLabel}>Period</Text>
+                <Text style={styles.insightDate}>
+                  {new Date(importSummary.date_range[0]).toLocaleDateString("en-IN", {
+                    month: "short",
+                    day: "numeric"
+                  })} - {new Date(importSummary.date_range[1]).toLocaleDateString("en-IN", {
+                    month: "short",
+                    day: "numeric"
+                  })}
+                </Text>
+              </View>
+            ) : null}
+          </View>
           {detectedDues.length > 0 ? (
             <View style={styles.recurringSection}>
               <Text style={styles.recurringLabel}>Recurring Detected</Text>
@@ -455,6 +477,36 @@ const styles = StyleSheet.create({
   },
   recurringAmount: {
     fontSize: theme.typography.caption,
+    color: theme.colors.text
+  },
+  insightsRow: {
+    flexDirection: "row",
+    gap: theme.spacing.md,
+    marginTop: theme.spacing.md,
+    justifyContent: "space-between"
+  },
+  insightBadge: {
+    flex: 1,
+    paddingVertical: theme.spacing.sm,
+    paddingHorizontal: theme.spacing.md,
+    backgroundColor: theme.colors.surfaceMuted,
+    borderRadius: theme.radius.md,
+    alignItems: "center",
+    justifyContent: "center"
+  },
+  insightLabel: {
+    fontSize: theme.typography.caption,
+    color: theme.colors.textMuted,
+    marginBottom: 2
+  },
+  insightCategory: {
+    fontSize: theme.typography.body,
+    fontWeight: "600",
+    color: theme.colors.primary
+  },
+  insightDate: {
+    fontSize: theme.typography.body,
+    fontWeight: "600",
     color: theme.colors.text
   }
 });

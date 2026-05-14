@@ -164,10 +164,15 @@ def get_import_summary(
             total_spend += amount
 
         category = txn.category_code or "uncategorized"
+        description_lower = (txn.description_clean or "").lower()
+
         category_totals[category] += amount
 
+        # Track by source type
         if txn.source_type == "upi":
             total_upi += amount
+        elif "atm" in description_lower or "cash withdrawal" in description_lower:
+            total_cash_withdrawal += amount
         elif category == "cash_withdrawal":
             total_cash_withdrawal += amount
         elif category == "transfers":
@@ -176,13 +181,18 @@ def get_import_summary(
         if txn.transaction_date:
             dates.append(txn.transaction_date.isoformat())
 
-    top_categories = dict(
-        sorted(
-            ((cat, amt) for cat, amt in category_totals.items() if amt > 0),
-            key=lambda x: x[1],
-            reverse=True,
-        )[:5]
+    sorted_categories = sorted(
+        ((cat, amt) for cat, amt in category_totals.items() if amt > 0),
+        key=lambda x: x[1],
+        reverse=True,
     )
+    top_categories = dict(sorted_categories[:5])
+
+    most_spent_category = None
+    most_spent_amount = 0
+    if sorted_categories:
+        most_spent_category = sorted_categories[0][0].replace("_", " ").title()
+        most_spent_amount = sorted_categories[0][1]
 
     date_range = None
     if dates:
@@ -196,6 +206,8 @@ def get_import_summary(
         total_cash_withdrawal=round(total_cash_withdrawal, 2),
         total_transfer=round(total_transfer, 2),
         top_categories={k: round(v, 2) for k, v in top_categories.items()},
+        most_spent_category=most_spent_category,
+        most_spent_amount=round(most_spent_amount, 2),
         date_range=date_range,
     )
 

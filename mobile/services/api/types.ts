@@ -264,6 +264,8 @@ export type ImportSummaryResponse = {
   total_cash_withdrawal: number;
   total_transfer: number;
   top_categories: Record<string, number>;
+  most_spent_category?: string | null;
+  most_spent_amount?: number;
   date_range?: [string, string] | null;
 };
 

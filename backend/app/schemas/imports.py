@@ -65,4 +65,6 @@ class ImportSummaryResponse(BaseModel):
     total_cash_withdrawal: float
     total_transfer: float
     top_categories: dict[str, float]
+    most_spent_category: str | None = None
+    most_spent_amount: float = 0
     date_range: tuple[str, str] | None = None
