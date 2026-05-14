@@ -156,9 +156,18 @@ def process_import_file(
             )
 
     parsed_file = read_rows_for_file_type(file_type, content)
+
+    if not parsed_file.headers or not parsed_file.rows:
+        raise ValueError("File contains no transaction data. Check that the file includes headers and at least one row of data.")
+
     bank_hint = extract_bank_hint_for_file_type(file_type, content)
     source_name, source_type = detect_source(file_name, parsed_file.headers, parsed_file.sheet_names, bank_hint)
     mapping = map_columns(parsed_file.headers)
+
+    if not mapping or (not mapping.get("amount") and not mapping.get("debit")):
+        raise ValueError(f"Cannot find amount or debit/credit columns in the statement. Headers found: {', '.join(parsed_file.headers[:10])}. Check that your statement includes transaction amounts.")
+    if not mapping.get("transaction_date"):
+        raise ValueError(f"Cannot find transaction date column. Headers found: {', '.join(parsed_file.headers[:10])}. Check that your statement includes transaction dates.")
 
     import_file = ImportFile(
         user_id=user_id,

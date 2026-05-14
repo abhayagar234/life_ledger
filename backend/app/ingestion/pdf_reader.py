@@ -12,6 +12,7 @@ from app.ingestion.readers import (
 
 
 BANK_NAMES = ["hdfc bank", "sbi", "state bank", "icici bank", "axis bank", "kotak mahindra", "indusind", "yes bank", "paytm"]
+SUMMARY_BALANCE_RE = re.compile(r"\b(clear|closing)\s+balance\s*:\s*([\d,]+(?:\.\d{1,2})?)\s*(cr|dr)?", re.IGNORECASE)
 
 
 def _detect_bank_from_text(text: str) -> str | None:
@@ -20,6 +21,15 @@ def _detect_bank_from_text(text: str) -> str | None:
         if bank in text_lower:
             return bank
     return None
+
+
+def _extract_summary_balance(text: str) -> str | None:
+    match = SUMMARY_BALANCE_RE.search(text)
+    if not match:
+        return None
+    amount = match.group(2)
+    suffix = (match.group(3) or "").lower()
+    return f"-{amount}" if suffix == "dr" else amount
 
 
 def _looks_like_date(cell: object) -> bool:
@@ -97,10 +107,19 @@ def _stitch_tables(tables_per_page: list[list[list]]) -> list[list]:
         return all_tables[0]
 
     best_table = [all_tables[0][0]]
+    seen_rows = set()
+
     for table in all_tables:
         for row in table[1:]:
             if not any(str(cell).strip() for cell in row if cell is not None):
                 continue
+
+            # Create a fingerprint of the row to detect exact duplicates
+            row_fingerprint = tuple(str(cell).strip() if cell is not None else "" for cell in row)
+            if row_fingerprint in seen_rows:
+                continue
+            seen_rows.add(row_fingerprint)
+
             if any(_looks_like_date(cell) for cell in row[:2]):
                 best_table.append(row)
                 continue
@@ -145,6 +164,7 @@ def _parse_text_fallback(pdf_file: pdfplumber.PDF) -> list[list]:
     rows: list[list] = []
     description_parts: list[str] = []
     prev_balance: float | None = None
+    seen_rows = set()
 
     for page in pdf_file.pages:
         text = page.extract_text() or ""
@@ -182,7 +202,14 @@ def _parse_text_fallback(pdf_file: pdfplumber.PDF) -> list[list]:
                     debit = amount_text
 
                 description = " ".join(description_parts).strip()
-                rows.append([serial_no, txn_date, description, "", debit, credit, balance_text])
+                row = [serial_no, txn_date, description, "", debit, credit, balance_text]
+
+                # Deduplicate exact row copies
+                row_fingerprint = tuple(str(cell) for cell in row)
+                if row_fingerprint not in seen_rows:
+                    rows.append(row)
+                    seen_rows.add(row_fingerprint)
+
                 description_parts = []
                 prev_balance = balance_value
                 continue
@@ -208,6 +235,7 @@ def read_pdf_rows(content: bytes) -> ParsedSheet:
 
     tables_per_page = []
     bank_hint = None
+    summary_balance = None
 
     for page_idx, page in enumerate(pdf_file.pages):
         if page_idx == 0:
@@ -215,6 +243,7 @@ def read_pdf_rows(content: bytes) -> ParsedSheet:
                 text = page.extract_text()
                 if text:
                     bank_hint = _detect_bank_from_text(text)
+                    summary_balance = _extract_summary_balance(text)
             except Exception:
                 pass
 
@@ -232,9 +261,15 @@ def read_pdf_rows(content: bytes) -> ParsedSheet:
         combined_matrix = _parse_text_fallback(pdf_file)
 
     if not combined_matrix or all(not row for row in combined_matrix):
-        raise RuntimeError("PDF contains no readable table data.")
+        raise ValueError("PDF contains no readable transaction table. Try exporting as CSV from your bank instead.")
 
     sheet = _detect_best_sheet(None, combined_matrix)
+    if not sheet.headers or not sheet.rows:
+        raise ValueError("PDF was read but contains no recognizable transaction data. Check that your statement includes a table with dates and amounts.")
+
+    if summary_balance and sheet.rows:
+        sheet.rows[0]["statement_clear_balance"] = summary_balance
+
     pdf_file.close()
 
     return sheet

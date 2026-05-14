@@ -1,14 +1,13 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
-import { useEffect } from "react";
-import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { AppScreen } from "../../components/AppScreen";
 import { Button } from "../../components/Button";
 import { EmptyStateCard } from "../../components/EmptyStateCard";
 import { QuickActionTile } from "../../components/QuickActionTile";
 import { LanguageCode, t } from "../../i18n";
-import { loadSampleStatement, updateBankBalance } from "../../services/api/moneyos";
+import { updateBankBalance } from "../../services/api/moneyos";
 import { useSessionStore } from "../../store/session";
 import { commonStyles, theme } from "../../theme";
 
@@ -58,6 +57,17 @@ function daysSince(value?: string | null) {
   parsed.setHours(0, 0, 0, 0);
   today.setHours(0, 0, 0, 0);
   return Math.max(Math.round((today.getTime() - parsed.getTime()) / (1000 * 60 * 60 * 24)), 0);
+}
+
+function daysUntil(value?: string | null) {
+  if (!value) {
+    return null;
+  }
+  const parsed = new Date(value);
+  const today = new Date();
+  parsed.setHours(0, 0, 0, 0);
+  today.setHours(0, 0, 0, 0);
+  return Math.max(Math.round((parsed.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)), 1);
 }
 
 function buildSafeToSpendHelper(
@@ -549,8 +559,7 @@ export default function HomeScreen() {
   const language = useSessionStore((state) => state.onboardingDraft.preferredLanguage);
   const dashboard = useSessionStore((state) => state.dashboard);
   const refreshDashboard = useSessionStore((state) => state.refreshDashboard);
-  const hasRealData = useSessionStore((state) => state.hasRealData);
-  const startFreshDemo = useSessionStore((state) => state.startFreshDemo);
+  const dataMode = useSessionStore((state) => state.dataMode);
   const error = useSessionStore((state) => state.error);
   const userId = useSessionStore((state) => state.userId);
   const homeCopy = buildHomeCopy(language);
@@ -605,7 +614,9 @@ export default function HomeScreen() {
   const persona = buildPersona(profile.user_type, language);
   const staleLabel = buildStaleLabel(language, cashflow?.latest_activity_date);
   const staleCashDays = daysSince(cashflow?.latest_cash_update_date);
+  const nextIncomeDays = daysUntil(cashflow?.next_income_date);
   const keepAsideCopy = buildKeepAsideCopy(language);
+  const recentLedgerEntries = dashboard.recentLedgerEntries ?? [];
   const showStaleCashBanner = Boolean(cashflow?.cash_is_stale);
   const schemeCards = buildSchemeCards(language, profile.user_type);
   const creditCardOutstandingWatchouts =
@@ -657,23 +668,6 @@ export default function HomeScreen() {
         formatMoney(cashflow.working_bank_balance || displayedBankSeen)
       )
     : null;
-  const primaryBannerAction = cashflow
-    ? {
-        label: t(language, "updateTodayMoney"),
-        onPress: () => router.push("/import-statement")
-      }
-    : {
-        label: t(language, "loadSample"),
-        onPress: () => router.push("/import-statement")
-      };
-  const isFirstDecisionState = !cashflow;
-
-  useEffect(() => {
-    if (isFirstDecisionState) {
-      router.replace("/import-statement");
-    }
-  }, [isFirstDecisionState]);
-
   return (
     <AppScreen
       title={`Hello, ${displayName}`}
@@ -701,14 +695,14 @@ export default function HomeScreen() {
         </View>
       ) : null}
 
-      {cashflow?.bank_balance_needs_confirmation && hasRealData ? (
+      {cashflow?.bank_balance_needs_confirmation && dataMode === "real" ? (
         <View style={[commonStyles.card, commonStyles.shadow, styles.bankConfirmCard]}>
           <Text style={styles.bankConfirmTitle}>{t(language, "bankConfirmTitle")}</Text>
           <Text style={styles.bankConfirmAmount}>
             {formatMoney(cashflow.detected_bank_balance)}
           </Text>
           <Text style={styles.bankConfirmHelper}>
-            {hasRealData ? t(language, "bankConfirmHelper") : t(language, "bankConfirmHelperSample")}
+            {dataMode === "real" ? t(language, "bankConfirmHelper") : t(language, "bankConfirmHelperSample")}
           </Text>
           <View style={styles.bankConfirmActions}>
             <Button
@@ -761,7 +755,7 @@ export default function HomeScreen() {
                 styles.heroValue,
                 cashflow.confidence === "medium" ? styles.heroValueMediumConfidence : null,
                 cashflow.confidence === "low" ? styles.heroValueLowConfidence : null,
-                !hasRealData ? styles.heroValueDemo : null
+                dataMode === "sample" ? styles.heroValueDemo : null
               ]}
             >
               {displayedHeroValue}
@@ -845,14 +839,19 @@ export default function HomeScreen() {
           </View>
 
           <View style={styles.metricRow}>
-            <View style={[commonStyles.card, styles.metricCard]}>
-              <Pressable onPress={() => router.push("/edit-daily-needs" as never)} style={styles.metricHeaderButton}>
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => router.push("/edit-daily-needs")}
+              style={({ pressed }) => [commonStyles.card, styles.metricCard, pressed ? styles.metricCardPressed : null]}
+            >
+              <View style={styles.metricHeaderButton}>
                 <Text style={styles.metricLabel}>
                 {cashflow.daily_needs_required > 0 && cashflow.daily_needs_buffer <= 0
                   ? t(language, "dailyNeedsToProtect")
                   : t(language, "dailyNeedsCovered")}
                 </Text>
-              </Pressable>
+                <Ionicons name="create-outline" size={16} color={theme.colors.textMuted} />
+              </View>
               <Text style={styles.metricValue}>
                 {formatMoney(cashflow.daily_needs_required > 0 && cashflow.daily_needs_buffer <= 0 ? cashflow.daily_needs_required : cashflow.daily_needs_buffer)}
               </Text>
@@ -866,12 +865,17 @@ export default function HomeScreen() {
                       : homeCopy.ofNeededTillNextIncome(formatMoney(cashflow.daily_needs_required))}
                 {cashflow.baseline_daily_spend > 0 ? ` · ${formatMoney(cashflow.baseline_daily_spend)}/day` : ""}
               </Text>
-            </View>
+              {cashflow.baseline_daily_spend > 0 && nextIncomeDays ? (
+                <Text style={styles.metricSubHelper}>
+                  {`${formatMoney(cashflow.baseline_daily_spend)}/day × ${nextIncomeDays} day${nextIncomeDays === 1 ? "" : "s"}`}
+                </Text>
+              ) : null}
+            </Pressable>
             <View style={[commonStyles.card, styles.metricCard]}>
-              <Text style={styles.metricLabel}>{hasRealData ? t(language, "bankSeen") : t(language, "bankSeenSample")}</Text>
+              <Text style={styles.metricLabel}>{dataMode === "real" ? t(language, "bankSeen") : t(language, "bankSeenSample")}</Text>
               <Text style={styles.metricValue}>{formatMoney(cashflow.working_bank_balance || displayedBankSeen)}</Text>
               <Text style={styles.metricHelper}>
-                {!hasRealData
+                {dataMode !== "real"
                   ? t(language, "bankSeenSampleHelper")
                   : cashflow.liquid_balance < 0
                     ? homeCopy.bankSeenNegativeHelper
@@ -892,6 +896,32 @@ export default function HomeScreen() {
             </View>
           </View>
 
+          {recentLedgerEntries.length > 0 ? (
+            <View style={[commonStyles.card, commonStyles.shadow, styles.recentCard]}>
+              <Text style={styles.recentTitle}>Recent updates</Text>
+              {recentLedgerEntries.slice(0, 4).map((entry) => {
+                const isMoneyIn = entry.cash_direction === "in" || entry.entry_type === "income";
+                const sign = isMoneyIn ? "+" : "-";
+                const dateLabel = new Date(entry.entry_date).toLocaleDateString("en-IN", {
+                  day: "numeric",
+                  month: "short"
+                });
+                const label = entry.description || entry.counterparty_name || entry.entry_type.replace(/_/g, " ");
+                return (
+                  <View key={entry.id} style={styles.recentRow}>
+                    <View style={styles.recentCopy}>
+                      <Text style={styles.recentLabel}>{label}</Text>
+                      <Text style={styles.recentDate}>{dateLabel}</Text>
+                    </View>
+                    <Text style={[styles.recentAmount, isMoneyIn ? styles.recentAmountIn : styles.recentAmountOut]}>
+                      {`${sign} ${formatMoney(entry.amount)}`}
+                    </Text>
+                  </View>
+                );
+              })}
+            </View>
+          ) : null}
+
           <View style={[commonStyles.card, commonStyles.shadow, styles.requiredCard]}>
             <View style={styles.requiredHeader}>
               <View style={styles.requiredCopy}>
@@ -904,9 +934,9 @@ export default function HomeScreen() {
               </View>
             </View>
 
-            {cashflow.protected_due_items.length ? (
+            {cashflow.protected_due_items.filter((item) => item.source_type !== "statement_pattern").length ? (
               <>
-                {cashflow.protected_due_items.map((item) => {
+                {cashflow.protected_due_items.filter((item) => item.source_type !== "statement_pattern").map((item) => {
                   const isPaid = item.status === "paid";
                   const isPartial = item.status === "partial";
                   const dueStatus = buildDueStatusCopy(language, item);
@@ -959,9 +989,9 @@ export default function HomeScreen() {
                     </View>
                   );
                 })}
-                {cashflow.protected_due_items.some((item) => item.status === "paid") ? (
+                {cashflow.protected_due_items.filter((item) => item.source_type !== "statement_pattern" && item.status === "paid").length ? (
                   <Text style={styles.paidCountText}>
-                    {keepAsideCopy.paidCount(cashflow.protected_due_items.filter((item) => item.status === "paid").length)}
+                    {keepAsideCopy.paidCount(cashflow.protected_due_items.filter((item) => item.source_type !== "statement_pattern" && item.status === "paid").length)}
                   </Text>
                 ) : null}
               </>
@@ -1368,8 +1398,14 @@ const styles = StyleSheet.create({
     flex: 1,
     gap: theme.spacing.xs
   },
+  metricCardPressed: {
+    opacity: 0.86
+  },
   metricHeaderButton: {
-    alignSelf: "flex-start"
+    alignSelf: "flex-start",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6
   },
   metricLabel: {
     fontSize: theme.typography.caption,
@@ -1383,6 +1419,46 @@ const styles = StyleSheet.create({
   metricHelper: {
     fontSize: theme.typography.caption,
     color: theme.colors.textMuted
+  },
+  metricSubHelper: {
+    fontSize: 12,
+    color: theme.colors.textMuted
+  },
+  recentCard: {
+    gap: theme.spacing.sm
+  },
+  recentTitle: {
+    fontSize: theme.typography.body,
+    fontWeight: "700",
+    color: theme.colors.text
+  },
+  recentRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: theme.spacing.sm
+  },
+  recentCopy: {
+    flex: 1,
+    gap: 2
+  },
+  recentLabel: {
+    fontSize: theme.typography.caption,
+    color: theme.colors.text
+  },
+  recentDate: {
+    fontSize: 12,
+    color: theme.colors.textMuted
+  },
+  recentAmount: {
+    fontSize: theme.typography.caption,
+    fontWeight: "700"
+  },
+  recentAmountIn: {
+    color: theme.colors.success
+  },
+  recentAmountOut: {
+    color: theme.colors.danger
   },
   section: {
     gap: theme.spacing.md

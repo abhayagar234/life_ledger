@@ -94,7 +94,12 @@ def read_csv_rows(content: bytes) -> ParsedSheet:
     text = _decode_text(content)
     reader = csv.reader(StringIO(text))
     matrix = [row for row in reader]
-    return _detect_best_sheet(None, matrix)
+    if not matrix:
+        raise ValueError("CSV file is empty or could not be parsed.")
+    sheet = _detect_best_sheet(None, matrix)
+    if not sheet.rows:
+        raise ValueError("CSV contains headers but no transaction rows. Ensure your file has at least one data row.")
+    return sheet
 
 
 def read_xlsx_rows(content: bytes) -> ParsedSheet:
@@ -103,7 +108,14 @@ def read_xlsx_rows(content: bytes) -> ParsedSheet:
     except ImportError as exc:
         raise RuntimeError("XLSX support requires openpyxl to be installed.") from exc
 
-    workbook = load_workbook(BytesIO(content), read_only=True, data_only=True)
+    try:
+        workbook = load_workbook(BytesIO(content), read_only=True, data_only=True)
+    except Exception as exc:
+        raise ValueError(f"XLSX file is corrupted or invalid: {str(exc)}") from exc
+
+    if not workbook.sheetnames:
+        raise ValueError("XLSX file has no sheets.")
+
     best_sheet: ParsedSheet | None = None
     for sheet_name in workbook.sheetnames:
         worksheet = workbook[sheet_name]
@@ -114,8 +126,8 @@ def read_xlsx_rows(content: bytes) -> ParsedSheet:
         if best_sheet is None or candidate.score > best_sheet.score or len(candidate.rows) > len(best_sheet.rows):
             best_sheet = candidate
 
-    if best_sheet is None:
-        return ParsedSheet(sheet_name=None, header_row_index=0, headers=[], rows=[], score=0)
+    if best_sheet is None or not best_sheet.rows:
+        raise ValueError("XLSX file contains no transaction data. Check that at least one sheet has transaction rows with dates and amounts.")
     return best_sheet
 
 
@@ -125,7 +137,14 @@ def read_xls_rows(content: bytes) -> ParsedSheet:
     except ImportError as exc:
         raise RuntimeError("XLS support requires xlrd to be installed.") from exc
 
-    workbook = xlrd.open_workbook(file_contents=content)
+    try:
+        workbook = xlrd.open_workbook(file_contents=content)
+    except Exception as exc:
+        raise ValueError(f"XLS file is corrupted or invalid: {str(exc)}") from exc
+
+    if not workbook.nsheets:
+        raise ValueError("XLS file has no sheets.")
+
     best_sheet: ParsedSheet | None = None
     for sheet in workbook.sheets():
         matrix = [[sheet.cell_value(row, col) for col in range(sheet.ncols)] for row in range(sheet.nrows)]
@@ -135,6 +154,6 @@ def read_xls_rows(content: bytes) -> ParsedSheet:
         if best_sheet is None or candidate.score > best_sheet.score or len(candidate.rows) > len(best_sheet.rows):
             best_sheet = candidate
 
-    if best_sheet is None:
-        return ParsedSheet(sheet_name=None, header_row_index=0, headers=[], rows=[], score=0)
+    if best_sheet is None or not best_sheet.rows:
+        raise ValueError("XLS file contains no transaction data. Check that at least one sheet has transaction rows with dates and amounts.")
     return best_sheet

@@ -8,6 +8,7 @@ import type {
   DemoLoginResponse,
   DemoActionResponse,
   FileUploadResponse,
+  ImportSummaryResponse,
   InsightCard,
   LedgerEntryCreate,
   LedgerEntryRead,
@@ -87,6 +88,12 @@ export function createLedgerEntry(userId: string, payload: LedgerEntryCreate) {
   });
 }
 
+export function listLedgerEntries(userId: string) {
+  return apiRequest<LedgerEntryRead[]>("/ledger-entries", {
+    userId
+  });
+}
+
 export function loadSampleStatement(userId: string) {
   return apiRequest<DemoActionResponse>("/demo/sample-statement", {
     method: "POST",
@@ -149,10 +156,24 @@ export function getDetectedDues(userId: string, uploadId: string) {
   });
 }
 
+export function getImportSummary(userId: string, uploadId: string) {
+  return apiRequest<ImportSummaryResponse>(`/imports/${uploadId}/summary`, {
+    userId
+  });
+}
+
 export function confirmDetectedDues(userId: string, uploadId: string, confirmedDues: ConfirmDueItem[]) {
   return apiRequest<ConfirmDuesResponse>(`/imports/${uploadId}/confirm-dues`, {
     method: "POST",
     userId,
     body: JSON.stringify({ confirmed_dues: confirmedDues })
+  });
+}
+
+export function confirmPatternDue(userId: string, name: string, amount: number, dueDate: string, frequency: string = "monthly") {
+  return apiRequest<{ loan_id: string; emi_payment_id: string; message: string }>("/cashflow/confirm-pattern-due", {
+    method: "POST",
+    userId,
+    body: JSON.stringify({ name, amount, due_date: dueDate, frequency })
   });
 }
