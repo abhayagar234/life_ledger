@@ -806,8 +806,6 @@ def build_cashflow_summary(db: Session, user_id: str, as_of: date | None = None)
             explanations.append("Bank money reflects the amount you confirmed for this cycle.")
 
     watchouts: list[str] = []
-    if forgotten_subscriptions:
-        watchouts.append(f"We found charges you may have forgotten: {', '.join(forgotten_subscriptions[:3])}.")
     if safe_to_spend <= 0:
         watchouts.append(f"Protect essentials till {next_income_label}. Avoid big spends this week.")
     elif status == "tight":
