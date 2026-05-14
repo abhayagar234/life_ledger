@@ -1,3 +1,4 @@
+import logging
 from datetime import date
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
@@ -17,6 +18,37 @@ from app.schemas.imports import (
     FileUploadResponse,
 )
 from app.services.due_extractor import extract_detected_dues
+
+logger = logging.getLogger(__name__)
+
+
+def _categorize_import_error(error_msg: str, file_type: str) -> str:
+    error_lower = error_msg.lower()
+
+    if "password" in error_lower or "encrypted" in error_lower:
+        return "PDF is password-protected. Please remove the password and try again."
+    if "no pages" in error_lower or "empty" in error_lower:
+        return f"The {file_type} file appears to be empty or corrupted."
+    if "header" in error_lower or "no readable" in error_lower:
+        return "Could not find transaction headers in this file. Check the file format or try a different export format."
+    if "openpyxl" in error_lower:
+        return "XLSX format not supported. Please convert to CSV or PDF and try again."
+    if "xlrd" in error_lower:
+        return "XLS format not supported. Please convert to CSV, XLSX, or PDF and try again."
+    if "amount" in error_lower and "date" in error_lower:
+        return "File is missing required columns (date and amount). Check your statement format."
+    if "amount" in error_lower:
+        return "Could not identify amount column. Check that amounts are in a standard format."
+    if "date" in error_lower:
+        return "Could not identify date column. Check that dates are in DD/MM/YYYY or similar format."
+    if "decode" in error_lower or "encoding" in error_lower or "utf" in error_lower:
+        return "File encoding issue. Try saving as UTF-8 CSV and upload again."
+    if "max" in error_lower or "size" in error_lower:
+        return "File is too large. Please upload a smaller statement or split into multiple files."
+    if file_type == "pdf":
+        return "Unable to extract data from PDF. Try exporting as CSV from your bank instead."
+    return "We could not fully read this statement format yet. Please try another file or export in CSV format."
+
 
 router = APIRouter(prefix="/imports", tags=["imports"])
 
@@ -50,11 +82,12 @@ async def upload_file(
         )
     except (RuntimeError, ValueError) as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
-    except Exception:
-        raise HTTPException(
-            status_code=422,
-            detail="We could not fully read this statement format yet. Please try another file or continue with manual cash/dues."
-        )
+    except Exception as exc:
+        error_msg = str(exc)
+        logger.error(f"Unhandled error during import processing: {error_msg}", exc_info=True)
+
+        error_details = _categorize_import_error(error_msg, file_type)
+        raise HTTPException(status_code=422, detail=error_details)
 
 
 @router.get("/{upload_id}/detected-dues", response_model=list[DetectedDueResponse])

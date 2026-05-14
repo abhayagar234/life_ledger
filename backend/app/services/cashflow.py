@@ -3,6 +3,8 @@ from __future__ import annotations
 from calendar import monthrange
 from collections import defaultdict
 from datetime import date, timedelta
+from decimal import Decimal, InvalidOperation
+import re
 
 from sqlalchemy.orm import Session
 
@@ -20,6 +22,7 @@ NON_SPEND_CATEGORIES = {"transfers"}
 SAVINGS_CATEGORIES = {"savings_investments"}
 FIXED_DUE_CATEGORIES = {"rent", "emi_loans", "bills", "subscriptions", "insurance", "credit_card_payment"}
 ROLLING_DAILY_NEEDS_CATEGORIES = {"groceries", "health", "travel", "farming_expense"}
+STRICT_PATTERN_DUE_CATEGORIES = {"rent", "emi_loans", "subscriptions", "insurance", "credit_card_payment"}
 
 
 def _round_money(value: float) -> float:
@@ -28,6 +31,56 @@ def _round_money(value: float) -> float:
 
 def _fmt_money(value: float) -> str:
     return f"Rs {round(value):,}"
+
+
+def _parse_balance_value(value: object) -> float | None:
+    if value in (None, ""):
+        return None
+    if isinstance(value, (int, float, Decimal)):
+        return float(value)
+    text = str(value).strip().lower()
+    if not text:
+        return None
+    cleaned = (
+        text.replace("₹", "")
+        .replace("rs.", "")
+        .replace("rs", "")
+        .replace("inr", "")
+        .replace(",", "")
+        .replace("cr", "")
+        .replace("dr", "")
+        .strip()
+    )
+    cleaned = cleaned.strip("()")
+    if not re.fullmatch(r"-?\d+(\.\d+)?", cleaned):
+        return None
+    try:
+        return float(Decimal(cleaned))
+    except InvalidOperation:
+        return None
+
+
+def _latest_statement_balance(rows: list[NormalizedTransaction]) -> float | None:
+    for row in sorted(rows, key=lambda item: item.import_row.row_number if item.import_row else 0):
+        raw_data = row.import_row.raw_data if row.import_row else {}
+        for key, value in raw_data.items():
+            if str(key).lower() in {"statement_clear_balance", "statement_closing_balance"}:
+                parsed = _parse_balance_value(value)
+                if parsed is not None:
+                    return max(parsed, 0.0)
+
+    def sort_key(item: NormalizedTransaction) -> tuple[date, int]:
+        row_number = item.import_row.row_number if item.import_row else 0
+        return item.transaction_date, row_number
+
+    for row in sorted(rows, key=sort_key, reverse=True):
+        raw_data = row.import_row.raw_data if row.import_row else {}
+        for key, value in raw_data.items():
+            if "balance" in str(key).lower():
+                parsed = _parse_balance_value(value)
+                if parsed is not None:
+                    return max(parsed, 0.0)
+    return None
 
 
 def _format_date_label(value: date | None) -> str:
@@ -186,6 +239,28 @@ def _cycle_start_date(profile: FinancialProfile | None, rows: list[NormalizedTra
         return max(recent_credits)
 
     return max(as_of - timedelta(days=30), date(as_of.year, as_of.month, 1))
+
+
+def _has_due_like_pattern(group: list[NormalizedTransaction]) -> bool:
+    if len(group) < 2:
+        return False
+    dates = sorted(row.transaction_date for row in group)
+    gaps = [(dates[index + 1] - dates[index]).days for index in range(len(dates) - 1)]
+    return any(6 <= gap <= 8 or 27 <= gap <= 33 for gap in gaps)
+
+
+def _is_statement_due_candidate(row: NormalizedTransaction) -> bool:
+    category = row.category_code or "uncategorized"
+    if category in STRICT_PATTERN_DUE_CATEGORIES:
+        return True
+    if category == "bills":
+        return bool(row.is_fixed_obligation)
+    return bool(row.is_fixed_obligation and category in FIXED_DUE_CATEGORIES)
+
+
+def _lower_confidence(current: str, maximum: str) -> str:
+    rank = {"low": 0, "medium": 1, "high": 2}
+    return current if rank[current] <= rank[maximum] else maximum
 
 
 def _manual_cash_on_hand(db: Session, user_id: str) -> tuple[float, bool]:
@@ -421,7 +496,7 @@ def _fixed_due_estimate(
     for row in rows:
         if row.direction != "debit":
             continue
-        if row.category_code not in FIXED_DUE_CATEGORIES and not row.is_fixed_obligation:
+        if not _is_statement_due_candidate(row):
             continue
         key = row.counterparty_name or row.description_clean or row.category_code or "due"
         grouped[key].append(row)
@@ -433,13 +508,12 @@ def _fixed_due_estimate(
     due_items: list[ProtectedDueItem] = []
     for key, group in grouped.items():
         group.sort(key=lambda row: row.transaction_date, reverse=True)
+        if not _has_due_like_pattern(group):
+            continue
         latest = group[0]
-        if len(group) >= 2:
-            last_day = group[0].transaction_date.day
-            prev_day = group[1].transaction_date.day
-            target_day = round((last_day + prev_day) / 2)
-        else:
-            target_day = latest.transaction_date.day
+        last_day = group[0].transaction_date.day
+        prev_day = group[1].transaction_date.day
+        target_day = round((last_day + prev_day) / 2)
 
         candidate = _safe_date_for_day(as_of, target_day)
         if candidate < as_of:
@@ -570,7 +644,8 @@ def build_cashflow_summary(db: Session, user_id: str, as_of: date | None = None)
     trailing_essential_spend = 0.0
     trailing_total_spend = 0.0
 
-    trailing_start = as_of_date - timedelta(days=30)
+    spend_window_end = latest_activity_date if latest_activity_date and latest_activity_date < as_of_date else as_of_date
+    trailing_start = spend_window_end - timedelta(days=30)
     for row in rows:
         amount = float(row.amount)
         category = row.category_code or ""
@@ -587,7 +662,7 @@ def build_cashflow_summary(db: Session, user_id: str, as_of: date | None = None)
         if in_current_cycle and is_bank_like:
             bank_observed_balance -= amount
 
-        if row.transaction_date < trailing_start:
+        if row.transaction_date < trailing_start or row.transaction_date > spend_window_end:
             continue
 
         if category not in SAVINGS_CATEGORIES:
@@ -638,7 +713,11 @@ def build_cashflow_summary(db: Session, user_id: str, as_of: date | None = None)
     if profile and profile.daily_needs_override is not None and float(profile.daily_needs_override) > 0:
         baseline_daily_spend = round(float(profile.daily_needs_override), 2)
 
-    detected_bank_balance = round(max(bank_observed_balance, 0.0), 2)
+    statement_closing_balance = _latest_statement_balance(rows)
+    detected_bank_balance = round(
+        statement_closing_balance if statement_closing_balance is not None else max(bank_observed_balance, 0.0),
+        2,
+    )
     confirmed_bank_balance = float(profile.bank_balance_confirmed) if profile and profile.bank_balance_confirmed is not None else None
     working_bank_balance = round(max(confirmed_bank_balance if confirmed_bank_balance is not None else detected_bank_balance, 0.0), 2)
     bank_balance_needs_confirmation = detected_bank_balance > 0 and confirmed_bank_balance is None
@@ -667,6 +746,12 @@ def build_cashflow_summary(db: Session, user_id: str, as_of: date | None = None)
     elif income_confidence == "low":
         uncertainty_buffer = max(1000.0, spend_needed_until_income * 0.2)
         confidence = "low"
+    if bank_balance_needs_confirmation:
+        confidence = _lower_confidence(confidence, "medium")
+    if latest_activity_date and (as_of_date - latest_activity_date).days > 14:
+        confidence = _lower_confidence(confidence, "low")
+    if len(rows) < 10 or trailing_total_spend <= 0:
+        confidence = _lower_confidence(confidence, "low")
 
     safe_to_spend = _round_money(safe_leftover)
     safe_to_save = _round_money(safe_leftover - uncertainty_buffer)

@@ -59,6 +59,7 @@ HEADER_SYNONYMS = {
     },
     "direction": {"type", "dr cr", "cr dr", "transaction type", "txn type", "payment type", "nature"},
     "currency": {"currency", "curr"},
+    "balance": {"balance", "balance inr", "balance amount", "closing balance", "available balance"},
 }
 
 

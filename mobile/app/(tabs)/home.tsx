@@ -1,14 +1,13 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
-import { useEffect } from "react";
-import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { AppScreen } from "../../components/AppScreen";
 import { Button } from "../../components/Button";
 import { EmptyStateCard } from "../../components/EmptyStateCard";
 import { QuickActionTile } from "../../components/QuickActionTile";
 import { LanguageCode, t } from "../../i18n";
-import { loadSampleStatement, updateBankBalance } from "../../services/api/moneyos";
+import { updateBankBalance } from "../../services/api/moneyos";
 import { useSessionStore } from "../../store/session";
 import { commonStyles, theme } from "../../theme";
 
@@ -549,8 +548,7 @@ export default function HomeScreen() {
   const language = useSessionStore((state) => state.onboardingDraft.preferredLanguage);
   const dashboard = useSessionStore((state) => state.dashboard);
   const refreshDashboard = useSessionStore((state) => state.refreshDashboard);
-  const hasRealData = useSessionStore((state) => state.hasRealData);
-  const startFreshDemo = useSessionStore((state) => state.startFreshDemo);
+  const dataMode = useSessionStore((state) => state.dataMode);
   const error = useSessionStore((state) => state.error);
   const userId = useSessionStore((state) => state.userId);
   const homeCopy = buildHomeCopy(language);
@@ -657,23 +655,6 @@ export default function HomeScreen() {
         formatMoney(cashflow.working_bank_balance || displayedBankSeen)
       )
     : null;
-  const primaryBannerAction = cashflow
-    ? {
-        label: t(language, "updateTodayMoney"),
-        onPress: () => router.push("/import-statement")
-      }
-    : {
-        label: t(language, "loadSample"),
-        onPress: () => router.push("/import-statement")
-      };
-  const isFirstDecisionState = !cashflow;
-
-  useEffect(() => {
-    if (isFirstDecisionState) {
-      router.replace("/import-statement");
-    }
-  }, [isFirstDecisionState]);
-
   return (
     <AppScreen
       title={`Hello, ${displayName}`}
@@ -701,14 +682,14 @@ export default function HomeScreen() {
         </View>
       ) : null}
 
-      {cashflow?.bank_balance_needs_confirmation && hasRealData ? (
+      {cashflow?.bank_balance_needs_confirmation && dataMode === "real" ? (
         <View style={[commonStyles.card, commonStyles.shadow, styles.bankConfirmCard]}>
           <Text style={styles.bankConfirmTitle}>{t(language, "bankConfirmTitle")}</Text>
           <Text style={styles.bankConfirmAmount}>
             {formatMoney(cashflow.detected_bank_balance)}
           </Text>
           <Text style={styles.bankConfirmHelper}>
-            {hasRealData ? t(language, "bankConfirmHelper") : t(language, "bankConfirmHelperSample")}
+            {dataMode === "real" ? t(language, "bankConfirmHelper") : t(language, "bankConfirmHelperSample")}
           </Text>
           <View style={styles.bankConfirmActions}>
             <Button
@@ -761,7 +742,7 @@ export default function HomeScreen() {
                 styles.heroValue,
                 cashflow.confidence === "medium" ? styles.heroValueMediumConfidence : null,
                 cashflow.confidence === "low" ? styles.heroValueLowConfidence : null,
-                !hasRealData ? styles.heroValueDemo : null
+                dataMode === "sample" ? styles.heroValueDemo : null
               ]}
             >
               {displayedHeroValue}
@@ -868,10 +849,10 @@ export default function HomeScreen() {
               </Text>
             </View>
             <View style={[commonStyles.card, styles.metricCard]}>
-              <Text style={styles.metricLabel}>{hasRealData ? t(language, "bankSeen") : t(language, "bankSeenSample")}</Text>
+              <Text style={styles.metricLabel}>{dataMode === "real" ? t(language, "bankSeen") : t(language, "bankSeenSample")}</Text>
               <Text style={styles.metricValue}>{formatMoney(cashflow.working_bank_balance || displayedBankSeen)}</Text>
               <Text style={styles.metricHelper}>
-                {!hasRealData
+                {dataMode !== "real"
                   ? t(language, "bankSeenSampleHelper")
                   : cashflow.liquid_balance < 0
                     ? homeCopy.bankSeenNegativeHelper
@@ -904,9 +885,9 @@ export default function HomeScreen() {
               </View>
             </View>
 
-            {cashflow.protected_due_items.length ? (
+            {cashflow.protected_due_items.filter((item) => item.source_type !== "statement_pattern").length ? (
               <>
-                {cashflow.protected_due_items.map((item) => {
+                {cashflow.protected_due_items.filter((item) => item.source_type !== "statement_pattern").map((item) => {
                   const isPaid = item.status === "paid";
                   const isPartial = item.status === "partial";
                   const dueStatus = buildDueStatusCopy(language, item);
@@ -959,9 +940,9 @@ export default function HomeScreen() {
                     </View>
                   );
                 })}
-                {cashflow.protected_due_items.some((item) => item.status === "paid") ? (
+                {cashflow.protected_due_items.filter((item) => item.source_type !== "statement_pattern" && item.status === "paid").length ? (
                   <Text style={styles.paidCountText}>
-                    {keepAsideCopy.paidCount(cashflow.protected_due_items.filter((item) => item.status === "paid").length)}
+                    {keepAsideCopy.paidCount(cashflow.protected_due_items.filter((item) => item.source_type !== "statement_pattern" && item.status === "paid").length)}
                   </Text>
                 ) : null}
               </>

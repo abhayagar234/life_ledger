@@ -1,7 +1,7 @@
 import { File } from "expo-file-system";
 import { router } from "expo-router";
 import { useMemo, useState } from "react";
-import { ActivityIndicator, Alert, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Alert, Platform, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { AppScreen } from "../components/AppScreen";
 import { Button } from "../components/Button";
@@ -16,6 +16,14 @@ function formatMoney(amount: number) {
   return `Rs ${Math.round(amount).toLocaleString("en-IN")}`;
 }
 
+function cleanPickedName(value: string) {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
 function dueDateFromEstimate(value?: string | null) {
   if (value) {
     return value;
@@ -25,11 +33,17 @@ function dueDateFromEstimate(value?: string | null) {
   return d.toISOString().slice(0, 10);
 }
 
+function dueKey(due: DetectedDueResponse) {
+  return `${due.counterparty_name}:${due.amount}:${due.frequency}:${due.next_due_estimate ?? "no-date"}`;
+}
+
 export default function ImportStatementScreen() {
   const userId = useSessionStore((state) => state.userId);
   const profile = useSessionStore((state) => state.profile);
   const language = useSessionStore((state) => state.onboardingDraft.preferredLanguage);
   const refreshDashboard = useSessionStore((state) => state.refreshDashboard);
+  const markHasRealData = useSessionStore((state) => state.markHasRealData);
+  const markSampleData = useSessionStore((state) => state.markSampleData);
   const [loadingSample, setLoadingSample] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [confirming, setConfirming] = useState(false);
@@ -37,12 +51,13 @@ export default function ImportStatementScreen() {
   const [detectedDues, setDetectedDues] = useState<DetectedDueResponse[]>([]);
   const [selectedDues, setSelectedDues] = useState<Record<string, boolean>>({});
   const [customNames, setCustomNames] = useState<Record<string, string>>({});
+  const [customDates, setCustomDates] = useState<Record<string, string>>({});
 
   const selectedCount = useMemo(
     () =>
       detectedDues.filter(
         (due) =>
-          selectedDues[due.counterparty_name] !== false &&
+          selectedDues[dueKey(due)] !== false &&
           (due.frequency === "weekly" || due.frequency === "monthly")
       ).length,
     [detectedDues, selectedDues]
@@ -70,29 +85,49 @@ export default function ImportStatementScreen() {
             }
             try {
               setUploading(true);
-              const pickedResult = await File.pickFileAsync(undefined, "public.data");
+              const pickerType = Platform.OS === "android" ? "*/*" : "public.data";
+              const pickedResult = await File.pickFileAsync(undefined, pickerType);
               const picked = Array.isArray(pickedResult) ? pickedResult[0] : pickedResult;
               if (!picked) {
                 throw new Error("No file selected.");
               }
               const pickedFile = picked as any;
+              const pickedName = cleanPickedName(pickedFile.name || pickedFile.fileName || "statement");
+              const uri: string = pickedFile.uri || "";
+              const rawExt = (
+                pickedFile.extension ||
+                pickedName.slice(Math.max(0, pickedName.lastIndexOf("."))) ||
+                uri.slice(Math.max(0, uri.lastIndexOf(".")))
+              ).toLowerCase();
               const mimeType =
-                pickedFile.extension === ".pdf"
+                rawExt === ".pdf"
                   ? "application/pdf"
-                  : pickedFile.extension === ".csv"
+                  : rawExt === ".csv"
                     ? "text/csv"
-                    : "application/octet-stream";
+                    : rawExt === ".xlsx"
+                      ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                      : rawExt === ".xls"
+                        ? "application/vnd.ms-excel"
+                        : rawExt === ".txt"
+                          ? "text/plain"
+                          : "application/octet-stream";
               const result = await uploadImportFile(userId, {
-                uri: pickedFile.uri,
-                name: pickedFile.name,
+                uri,
+                name: pickedName,
                 mimeType
               });
               const dues = await getDetectedDues(userId, result.upload_id);
               setUploadResult(result);
               setDetectedDues(dues);
-              setSelectedDues(Object.fromEntries(dues.map((due) => [due.counterparty_name, true])));
-              setCustomNames(Object.fromEntries(dues.map((due) => [due.counterparty_name, due.counterparty_name])));
+              setSelectedDues(Object.fromEntries(dues.map((due) => [dueKey(due), true])));
+              setCustomNames(Object.fromEntries(dues.map((due) => [dueKey(due), due.counterparty_name])));
+              setCustomDates(Object.fromEntries(dues.map((due) => [dueKey(due), dueDateFromEstimate(due.next_due_estimate)])));
+              markHasRealData();
               await refreshDashboard();
+              const confirmableDues = dues.filter((due) => due.frequency === "weekly" || due.frequency === "monthly");
+              if (confirmableDues.length === 0) {
+                router.replace("/(tabs)/home");
+              }
             } catch (error) {
               Alert.alert("Import failed", error instanceof Error ? error.message : "Please try again.");
             } finally {
@@ -116,6 +151,7 @@ export default function ImportStatementScreen() {
             setLoadingSample(true);
             try {
               const result = await loadSampleStatement(userId);
+              markSampleData();
               await refreshDashboard();
               Alert.alert("Sample ready", result.message);
               router.replace("/(tabs)/home");
@@ -128,24 +164,19 @@ export default function ImportStatementScreen() {
         />
       </View>
 
-      {uploadResult ? (
+      {uploadResult && detectedDues.length > 0 ? (
         <View style={[commonStyles.card, styles.card]}>
-          <Text style={styles.title}>{t(language, "importedTitle")}</Text>
-          <Text style={styles.body}>{uploadResult.file_name}</Text>
+          <Text style={styles.title}>✅ Import Successful</Text>
           <Text style={styles.body}>
-            {uploadResult.imported_rows} rows imported · {uploadResult.duplicate_rows} duplicates
+            We found {detectedDues.length} recurring payment{detectedDues.length !== 1 ? 's' : ''} in {uploadResult.imported_rows} transactions.
           </Text>
         </View>
-      ) : null}
-
-      {uploadResult?.preview?.length ? (
+      ) : uploadResult ? (
         <View style={[commonStyles.card, styles.card]}>
-          <Text style={styles.title}>Preview</Text>
-          {uploadResult.preview.slice(0, 5).map((row, index) => (
-            <Text key={`${row.transaction_date}-${index}`} style={styles.body}>
-              {row.transaction_date} · {row.direction} · {formatMoney(row.amount)} · {row.description_clean}
-            </Text>
-          ))}
+          <Text style={styles.title}>✅ Import Successful</Text>
+          <Text style={styles.body}>
+            ✅ {uploadResult.imported_rows} transactions loaded successfully
+          </Text>
         </View>
       ) : null}
 
@@ -155,38 +186,53 @@ export default function ImportStatementScreen() {
           <Text style={styles.body}>{t(language, "recurringDuesBody")}</Text>
           <ScrollView style={styles.duesList}>
             {detectedDues.map((due) => {
-              const selected = selectedDues[due.counterparty_name] !== false;
+              const key = dueKey(due);
+              const selected = selectedDues[key] !== false;
               const confirmable = due.frequency === "weekly" || due.frequency === "monthly";
               return (
-                <View key={due.counterparty_name} style={styles.dueWrap}>
+                <View key={key} style={styles.dueWrap}>
                   <ChoiceCard
-                    title={`${due.counterparty_name} · ${formatMoney(due.amount)}`}
-                    subtitle={`${due.frequency} · confidence ${Math.round(due.confidence * 100)}%${confirmable ? "" : " · review only"}`}
+                    title={`${due.counterparty_name.replace(/_/g, " ").replace(/ en$/, "").split(" ").map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(" ")} · ${formatMoney(due.amount)}`}
+                    subtitle={`${due.frequency.charAt(0).toUpperCase() + due.frequency.slice(1)}${confirmable ? "" : " · review only"}`}
                     icon="repeat-outline"
                     selected={selected && confirmable}
                     onPress={() =>
                       confirmable
                         ? setSelectedDues((current) => ({
                             ...current,
-                            [due.counterparty_name]: !selected
+                            [key]: !selected
                           }))
                         : undefined
                     }
                   />
                   {!confirmable ? <Text style={styles.noteText}>{t(language, "irregularReviewNote")}</Text> : null}
-                  {selected ? (
-                    <TextInput
-                      value={customNames[due.counterparty_name] ?? due.counterparty_name}
-                      onChangeText={(value) =>
-                        setCustomNames((current) => ({
-                          ...current,
-                          [due.counterparty_name]: value
-                        }))
-                      }
-                      placeholder={t(language, "renameIfNeeded")}
-                      placeholderTextColor={theme.colors.textMuted}
-                      style={styles.input}
-                    />
+                  {selected && confirmable ? (
+                    <>
+                      <TextInput
+                        value={customNames[key] ?? due.counterparty_name}
+                        onChangeText={(value) =>
+                          setCustomNames((current) => ({
+                            ...current,
+                            [key]: value
+                          }))
+                        }
+                        placeholder={t(language, "renameIfNeeded")}
+                        placeholderTextColor={theme.colors.textMuted}
+                        style={styles.input}
+                      />
+                      <TextInput
+                        value={customDates[key] ?? dueDateFromEstimate(due.next_due_estimate)}
+                        onChangeText={(value) =>
+                          setCustomDates((current) => ({
+                            ...current,
+                            [key]: value
+                          }))
+                        }
+                        placeholder="Due date (YYYY-MM-DD)"
+                        placeholderTextColor={theme.colors.textMuted}
+                        style={styles.input}
+                      />
+                    </>
                   ) : null}
                 </View>
               );
@@ -203,23 +249,33 @@ export default function ImportStatementScreen() {
               const confirmed: ConfirmDueItem[] = detectedDues
                 .filter(
                   (due) =>
-                    selectedDues[due.counterparty_name] !== false &&
+                    selectedDues[dueKey(due)] !== false &&
                     (due.frequency === "weekly" || due.frequency === "monthly")
                 )
                 .map((due) => ({
                   counterparty_name: due.counterparty_name,
                   amount: due.amount,
                   frequency: due.frequency,
-                  next_due_date: dueDateFromEstimate(due.next_due_estimate),
-                  custom_name: customNames[due.counterparty_name] || due.counterparty_name
+                  next_due_date: customDates[dueKey(due)] || dueDateFromEstimate(due.next_due_estimate),
+                  custom_name: customNames[dueKey(due)] || due.counterparty_name
                 }));
 
               try {
                 setConfirming(true);
                 const result = await confirmDetectedDues(userId, uploadResult.upload_id, confirmed);
+                markHasRealData();
                 await refreshDashboard();
-                Alert.alert("Dues confirmed", result.message);
-                router.replace("/(tabs)/home");
+                Alert.alert(
+                  "✅ All set!",
+                  `${selectedCount} recurring payment${selectedCount !== 1 ? 's' : ''} will be protected from your next income.`,
+                  [
+                    {
+                      text: "Go to Home",
+                      onPress: () => router.replace("/(tabs)/home"),
+                      isPreferred: true
+                    }
+                  ]
+                );
               } catch (error) {
                 Alert.alert("Could not confirm dues", error instanceof Error ? error.message : "Please try again.");
               } finally {
@@ -228,6 +284,10 @@ export default function ImportStatementScreen() {
             }}
           />
         </View>
+      ) : null}
+
+      {uploadResult ? (
+        <Button label={t(language, "continueToHome")} onPress={() => router.replace("/(tabs)/home")} />
       ) : null}
 
       <Button label={t(language, "backHome")} variant="secondary" onPress={() => router.back()} />

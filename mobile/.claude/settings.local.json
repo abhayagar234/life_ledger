@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(.venv/bin/python -)",
+      "Bash(cat)",
+      "Bash(python3 test_categorization.py)",
+      "Bash(python3)",
+      "Bash(curl -s -X POST http://localhost:8000/auth/demo-login -H 'Content-Type: application/json' -d '{\"display_name\": \"Test User\", \"phone_number\": \"+919999999999\"}')",
+      "Bash(python -m json.tool)",
+      "Bash(curl -s http://localhost:8000/loans -H 'user_id: c2d94307-45ca-4657-9655-a6126ff0cdc1')",
+      "Bash(curl -s http://localhost:8000/ledger -H 'user_id: c2d94307-45ca-4657-9655-a6126ff0cdc1')",
+      "Bash(curl -s http://localhost:8000/ledger-entries?limit=200 -H 'user_id: c2d94307-45ca-4657-9655-a6126ff0cdc1')"
+    ]
+  }
+}

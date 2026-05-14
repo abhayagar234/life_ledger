@@ -56,6 +56,7 @@ type SessionStore = {
   savingOnboarding: boolean;
   onboardingCompleted: boolean;
   hasRealData: boolean;
+  dataMode: "empty" | "sample" | "real";
   error: string | null;
   userId: string | null;
   displayName: string;
@@ -69,6 +70,7 @@ type SessionStore = {
   saveOnboarding: () => Promise<ProfileRead>;
   startFreshDemo: () => Promise<void>;
   markHasRealData: () => void;
+  markSampleData: () => void;
 };
 
 function createEmptyDashboard(): DashboardState {
@@ -169,6 +171,7 @@ export const useSessionStore = create<SessionStore>()(
       savingOnboarding: false,
       onboardingCompleted: false,
       hasRealData: false,
+      dataMode: "empty",
       error: null,
       userId: null,
       displayName: "MoneyOS User",
@@ -176,7 +179,8 @@ export const useSessionStore = create<SessionStore>()(
       dashboard: createEmptyDashboard(),
       onboardingDraft: createDefaultDraft(),
       markHydrated: () => set({ hydrated: true }),
-      markHasRealData: () => set({ hasRealData: true }),
+      markHasRealData: () => set({ hasRealData: true, dataMode: "real" }),
+      markSampleData: () => set({ hasRealData: false, dataMode: "sample" }),
       setDraft: (patch) =>
         set((state) => ({
           onboardingDraft: {
@@ -201,6 +205,7 @@ export const useSessionStore = create<SessionStore>()(
             profile: null,
             onboardingCompleted: false,
             hasRealData: false,
+            dataMode: "empty",
             dashboard: createEmptyDashboard(),
             onboardingDraft: {
               ...createDefaultDraft(),
@@ -256,6 +261,7 @@ export const useSessionStore = create<SessionStore>()(
           error: null,
           onboardingCompleted: false,
           hasRealData: false,
+          dataMode: "empty",
           userId: null,
           profile: null,
           dashboard: {
@@ -382,6 +388,7 @@ export const useSessionStore = create<SessionStore>()(
         displayName: state.displayName,
         onboardingCompleted: state.onboardingCompleted,
         hasRealData: state.hasRealData,
+        dataMode: state.dataMode,
         profile: state.profile,
         onboardingDraft: state.onboardingDraft
       }),
