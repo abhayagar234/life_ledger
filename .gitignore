@@ -1,0 +1,9 @@
+
+# Dependencies
+node_modules/
+mobile/node_modules/
+
+# Python cache
+.pycache/
+__pycache__/
+*.pyc
