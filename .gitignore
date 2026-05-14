@@ -1,13 +1,3 @@
-
-# Dependencies
-node_modules/
-mobile/node_modules/
-
-# Python cache
-.pycache/
-__pycache__/
-*.pyc
-
 # Local/private files
 mobile/.env
 mobile/.claude/settings.local.json
