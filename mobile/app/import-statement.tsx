@@ -164,19 +164,33 @@ export default function ImportStatementScreen() {
         />
       </View>
 
-      {uploadResult && detectedDues.length > 0 ? (
+      {uploadResult ? (
         <View style={[commonStyles.card, styles.card]}>
           <Text style={styles.title}>✅ Import Successful</Text>
-          <Text style={styles.body}>
-            We found {detectedDues.length} recurring payment{detectedDues.length !== 1 ? 's' : ''} in {uploadResult.imported_rows} transactions.
-          </Text>
-        </View>
-      ) : uploadResult ? (
-        <View style={[commonStyles.card, styles.card]}>
-          <Text style={styles.title}>✅ Import Successful</Text>
-          <Text style={styles.body}>
-            ✅ {uploadResult.imported_rows} transactions loaded successfully
-          </Text>
+          <View style={styles.summaryGrid}>
+            <View style={styles.summaryItem}>
+              <Text style={styles.summaryLabel}>Transactions</Text>
+              <Text style={styles.summaryValue}>{uploadResult.imported_rows}</Text>
+            </View>
+            {detectedDues.length > 0 ? (
+              <>
+                <View style={styles.summaryItem}>
+                  <Text style={styles.summaryLabel}>Recurring</Text>
+                  <Text style={styles.summaryValue}>{detectedDues.length}</Text>
+                </View>
+                <View style={styles.summaryItem}>
+                  <Text style={styles.summaryLabel}>Monthly</Text>
+                  <Text style={styles.summaryValue}>
+                    {formatMoney(
+                      detectedDues
+                        .filter((d) => d.frequency === "monthly")
+                        .reduce((sum, d) => sum + d.amount, 0)
+                    )}
+                  </Text>
+                </View>
+              </>
+            ) : null}
+          </View>
         </View>
       ) : null}
 
@@ -346,5 +360,28 @@ const styles = StyleSheet.create({
   help: {
     fontSize: theme.typography.caption,
     color: theme.colors.textMuted
+  },
+  summaryGrid: {
+    flexDirection: "row",
+    gap: theme.spacing.md,
+    justifyContent: "space-between"
+  },
+  summaryItem: {
+    flex: 1,
+    alignItems: "center",
+    paddingVertical: theme.spacing.sm,
+    borderRadius: theme.radius.md,
+    backgroundColor: theme.colors.surfaceMuted,
+    paddingHorizontal: theme.spacing.sm
+  },
+  summaryLabel: {
+    fontSize: theme.typography.caption,
+    color: theme.colors.textMuted,
+    marginBottom: theme.spacing.xs
+  },
+  summaryValue: {
+    fontSize: theme.typography.body,
+    fontWeight: "700",
+    color: theme.colors.primary
   }
 });
