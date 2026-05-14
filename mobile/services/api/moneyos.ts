@@ -8,6 +8,7 @@ import type {
   DemoLoginResponse,
   DemoActionResponse,
   FileUploadResponse,
+  ImportSummaryResponse,
   InsightCard,
   LedgerEntryCreate,
   LedgerEntryRead,
@@ -145,6 +146,12 @@ export async function uploadImportFile(userId: string, file: { uri: string; name
 
 export function getDetectedDues(userId: string, uploadId: string) {
   return apiRequest<DetectedDueResponse[]>(`/imports/${uploadId}/detected-dues`, {
+    userId
+  });
+}
+
+export function getImportSummary(userId: string, uploadId: string) {
+  return apiRequest<ImportSummaryResponse>(`/imports/${uploadId}/summary`, {
     userId
   });
 }

@@ -6,8 +6,8 @@ import { ActivityIndicator, Alert, Platform, ScrollView, StyleSheet, Text, TextI
 import { AppScreen } from "../components/AppScreen";
 import { Button } from "../components/Button";
 import { ChoiceCard } from "../components/ChoiceCard";
-import { loadSampleStatement, uploadImportFile, getDetectedDues, confirmDetectedDues } from "../services/api/moneyos";
-import type { ConfirmDueItem, DetectedDueResponse, FileUploadResponse } from "../services/api/types";
+import { loadSampleStatement, uploadImportFile, getDetectedDues, confirmDetectedDues, getImportSummary } from "../services/api/moneyos";
+import type { ConfirmDueItem, DetectedDueResponse, FileUploadResponse, ImportSummaryResponse } from "../services/api/types";
 import { t } from "../i18n";
 import { useSessionStore } from "../store/session";
 import { commonStyles, theme } from "../theme";
@@ -52,6 +52,7 @@ export default function ImportStatementScreen() {
   const [selectedDues, setSelectedDues] = useState<Record<string, boolean>>({});
   const [customNames, setCustomNames] = useState<Record<string, string>>({});
   const [customDates, setCustomDates] = useState<Record<string, string>>({});
+  const [importSummary, setImportSummary] = useState<ImportSummaryResponse | null>(null);
 
   const selectedCount = useMemo(
     () =>
@@ -117,8 +118,10 @@ export default function ImportStatementScreen() {
                 mimeType
               });
               const dues = await getDetectedDues(userId, result.upload_id);
+              const summary = await getImportSummary(userId, result.upload_id);
               setUploadResult(result);
               setDetectedDues(dues);
+              setImportSummary(summary);
               setSelectedDues(Object.fromEntries(dues.map((due) => [dueKey(due), true])));
               setCustomNames(Object.fromEntries(dues.map((due) => [dueKey(due), due.counterparty_name])));
               setCustomDates(Object.fromEntries(dues.map((due) => [dueKey(due), dueDateFromEstimate(due.next_due_estimate)])));
@@ -164,7 +167,7 @@ export default function ImportStatementScreen() {
         />
       </View>
 
-      {uploadResult ? (
+      {uploadResult && importSummary ? (
         <View style={[commonStyles.card, styles.card]}>
           <Text style={styles.title}>✅ Import Successful</Text>
           <View style={styles.summaryGrid}>
@@ -172,25 +175,49 @@ export default function ImportStatementScreen() {
               <Text style={styles.summaryLabel}>Transactions</Text>
               <Text style={styles.summaryValue}>{uploadResult.imported_rows}</Text>
             </View>
-            {detectedDues.length > 0 ? (
-              <>
-                <View style={styles.summaryItem}>
-                  <Text style={styles.summaryLabel}>Recurring</Text>
-                  <Text style={styles.summaryValue}>{detectedDues.length}</Text>
-                </View>
-                <View style={styles.summaryItem}>
-                  <Text style={styles.summaryLabel}>Monthly</Text>
-                  <Text style={styles.summaryValue}>
-                    {formatMoney(
-                      detectedDues
-                        .filter((d) => d.frequency === "monthly")
-                        .reduce((sum, d) => sum + d.amount, 0)
-                    )}
-                  </Text>
-                </View>
-              </>
+            <View style={styles.summaryItem}>
+              <Text style={styles.summaryLabel}>Total Spend</Text>
+              <Text style={styles.summaryValue}>{formatMoney(importSummary.total_spend)}</Text>
+            </View>
+            <View style={styles.summaryItem}>
+              <Text style={styles.summaryLabel}>Total Income</Text>
+              <Text style={styles.summaryValue}>{formatMoney(importSummary.total_income)}</Text>
+            </View>
+          </View>
+          <View style={styles.detailsGrid}>
+            {importSummary.total_upi > 0 ? (
+              <View style={styles.detailItem}>
+                <Text style={styles.detailLabel}>UPI Spend</Text>
+                <Text style={styles.detailValue}>{formatMoney(importSummary.total_upi)}</Text>
+              </View>
+            ) : null}
+            {importSummary.total_cash_withdrawal > 0 ? (
+              <View style={styles.detailItem}>
+                <Text style={styles.detailLabel}>Cash Withdrawal</Text>
+                <Text style={styles.detailValue}>{formatMoney(importSummary.total_cash_withdrawal)}</Text>
+              </View>
             ) : null}
           </View>
+          {detectedDues.length > 0 ? (
+            <View style={styles.recurringSection}>
+              <Text style={styles.recurringLabel}>Recurring Detected</Text>
+              <Text style={styles.recurringValue}>{detectedDues.length} payments</Text>
+              <Text style={styles.recurringAmount}>
+                {formatMoney(
+                  detectedDues
+                    .filter((d) => d.frequency === "monthly")
+                    .reduce((sum, d) => sum + d.amount, 0)
+                )} monthly
+              </Text>
+            </View>
+          ) : null}
+        </View>
+      ) : uploadResult ? (
+        <View style={[commonStyles.card, styles.card]}>
+          <Text style={styles.title}>✅ Import Successful</Text>
+          <Text style={styles.body}>
+            {uploadResult.imported_rows} transactions loaded successfully
+          </Text>
         </View>
       ) : null}
 
@@ -383,5 +410,51 @@ const styles = StyleSheet.create({
     fontSize: theme.typography.body,
     fontWeight: "700",
     color: theme.colors.primary
+  },
+  detailsGrid: {
+    flexDirection: "row",
+    gap: theme.spacing.md,
+    marginTop: theme.spacing.sm
+  },
+  detailItem: {
+    flex: 1,
+    paddingVertical: theme.spacing.xs,
+    paddingHorizontal: theme.spacing.sm,
+    borderLeftWidth: 2,
+    borderLeftColor: theme.colors.primary
+  },
+  detailLabel: {
+    fontSize: theme.typography.caption,
+    color: theme.colors.textMuted,
+    marginBottom: 4
+  },
+  detailValue: {
+    fontSize: theme.typography.body,
+    fontWeight: "600",
+    color: theme.colors.text
+  },
+  recurringSection: {
+    marginTop: theme.spacing.md,
+    paddingVertical: theme.spacing.sm,
+    paddingHorizontal: theme.spacing.md,
+    backgroundColor: theme.colors.surfaceMuted,
+    borderRadius: theme.radius.md,
+    borderLeftWidth: 3,
+    borderLeftColor: theme.colors.primary
+  },
+  recurringLabel: {
+    fontSize: theme.typography.caption,
+    color: theme.colors.textMuted,
+    marginBottom: 4
+  },
+  recurringValue: {
+    fontSize: theme.typography.body,
+    fontWeight: "700",
+    color: theme.colors.primary,
+    marginBottom: 4
+  },
+  recurringAmount: {
+    fontSize: theme.typography.caption,
+    color: theme.colors.text
   }
 });

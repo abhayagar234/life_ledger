@@ -257,6 +257,16 @@ export type ConfirmDuesResponse = {
   message: string;
 };
 
+export type ImportSummaryResponse = {
+  total_income: number;
+  total_spend: number;
+  total_upi: number;
+  total_cash_withdrawal: number;
+  total_transfer: number;
+  top_categories: Record<string, number>;
+  date_range?: [string, string] | null;
+};
+
 export type UpcomingDueCreate = {
   name: string;
   amount: number;

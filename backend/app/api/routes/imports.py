@@ -16,6 +16,7 @@ from app.schemas.imports import (
     ConfirmDuesResponse,
     DetectedDueResponse,
     FileUploadResponse,
+    ImportSummaryResponse,
 )
 from app.services.due_extractor import extract_detected_dues
 
@@ -118,6 +119,85 @@ def get_detected_dues(
         )
         for d in detected
     ]
+
+
+@router.get("/{upload_id}/summary", response_model=ImportSummaryResponse)
+def get_import_summary(
+    upload_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> ImportSummaryResponse:
+    import_file = (
+        db.query(ImportFile)
+        .filter(ImportFile.id == upload_id, ImportFile.user_id == current_user.id)
+        .first()
+    )
+    if not import_file:
+        raise HTTPException(status_code=404, detail="Import file not found.")
+
+    from app.models.normalized_transaction import NormalizedTransaction
+    from collections import defaultdict
+
+    transactions = (
+        db.query(NormalizedTransaction)
+        .filter(
+            NormalizedTransaction.user_id == current_user.id,
+            NormalizedTransaction.import_file_id == upload_id,
+            NormalizedTransaction.dedupe_status != "duplicate",
+        )
+        .all()
+    )
+
+    total_income = 0.0
+    total_spend = 0.0
+    total_upi = 0.0
+    total_cash_withdrawal = 0.0
+    total_transfer = 0.0
+    category_totals: dict[str, float] = defaultdict(float)
+    dates = []
+
+    for txn in transactions:
+        amount = float(txn.amount)
+        if txn.direction == "credit":
+            total_income += amount
+        else:
+            total_spend += amount
+
+        category = txn.category_code or "uncategorized"
+        category_totals[category] += amount
+
+        if txn.source_type == "upi":
+            total_upi += amount
+        elif category == "cash_withdrawal":
+            total_cash_withdrawal += amount
+        elif category == "transfers":
+            total_transfer += amount
+
+        if txn.transaction_date:
+            dates.append(txn.transaction_date.isoformat())
+
+    top_categories = dict(
+        sorted(
+            ((cat, amt) for cat, amt in category_totals.items() if amt > 0),
+            key=lambda x: x[1],
+            reverse=True,
+        )[:5]
+    )
+
+    date_range = None
+    if dates:
+        dates.sort()
+        date_range = (dates[0], dates[-1])
+
+    return ImportSummaryResponse(
+        total_income=round(total_income, 2),
+        total_spend=round(total_spend, 2),
+        total_upi=round(total_upi, 2),
+        total_cash_withdrawal=round(total_cash_withdrawal, 2),
+        total_transfer=round(total_transfer, 2),
+        top_categories={k: round(v, 2) for k, v in top_categories.items()},
+        date_range=date_range,
+    )
 
 
 @router.post("/{upload_id}/confirm-dues", response_model=ConfirmDuesResponse)

@@ -56,3 +56,13 @@ class ConfirmDuesRequest(BaseModel):
 class ConfirmDuesResponse(BaseModel):
     created_loans: list[str]
     message: str
+
+
+class ImportSummaryResponse(BaseModel):
+    total_income: float
+    total_spend: float
+    total_upi: float
+    total_cash_withdrawal: float
+    total_transfer: float
+    top_categories: dict[str, float]
+    date_range: tuple[str, str] | None = None
