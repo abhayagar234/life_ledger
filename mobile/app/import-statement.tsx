@@ -37,6 +37,31 @@ function dueKey(due: DetectedDueResponse) {
   return `${due.counterparty_name}:${due.amount}:${due.frequency}:${due.next_due_estimate ?? "no-date"}`;
 }
 
+function prettyCategory(value: string | null | undefined) {
+  if (!value) {
+    return null;
+  }
+  return value
+    .replace(/_/g, " ")
+    .split(" ")
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function periodLabel(summary: ImportSummaryResponse) {
+  if (summary.period_months && summary.period_months >= 1) {
+    if (summary.period_months <= 1.4) {
+      return "1 month";
+    }
+    return `${Math.round(summary.period_months)} months`;
+  }
+  if (summary.period_days) {
+    return `${summary.period_days} days`;
+  }
+  return "selected period";
+}
+
 export default function ImportStatementScreen() {
   const userId = useSessionStore((state) => state.userId);
   const profile = useSessionStore((state) => state.profile);
@@ -176,6 +201,10 @@ export default function ImportStatementScreen() {
               <Text style={styles.summaryValue}>{uploadResult.imported_rows}</Text>
             </View>
             <View style={styles.summaryItem}>
+              <Text style={styles.summaryLabel}>Statement Period</Text>
+              <Text style={styles.summaryValue}>{periodLabel(importSummary)}</Text>
+            </View>
+            <View style={styles.summaryItem}>
               <Text style={styles.summaryLabel}>Total Spend</Text>
               <Text style={styles.summaryValue}>{formatMoney(importSummary.total_spend)}</Text>
             </View>
@@ -187,13 +216,13 @@ export default function ImportStatementScreen() {
           <View style={styles.detailsGrid}>
             {importSummary.total_upi > 0 ? (
               <View style={styles.detailItem}>
-                <Text style={styles.detailLabel}>UPI Spend</Text>
+                <Text style={styles.detailLabel}>UPI Spend (this period)</Text>
                 <Text style={styles.detailValue}>{formatMoney(importSummary.total_upi)}</Text>
               </View>
             ) : null}
             {importSummary.total_cash_withdrawal > 0 ? (
               <View style={styles.detailItem}>
-                <Text style={styles.detailLabel}>Cash Withdrawal</Text>
+                <Text style={styles.detailLabel}>Cash Withdrawn (this period)</Text>
                 <Text style={styles.detailValue}>{formatMoney(importSummary.total_cash_withdrawal)}</Text>
               </View>
             ) : null}
@@ -202,7 +231,10 @@ export default function ImportStatementScreen() {
             {importSummary.most_spent_category ? (
               <View style={styles.insightBadge}>
                 <Text style={styles.insightLabel}>Most Spent</Text>
-                <Text style={styles.insightCategory}>{importSummary.most_spent_category}</Text>
+                <Text style={styles.insightCategory}>{prettyCategory(importSummary.most_spent_category)}</Text>
+                {importSummary.most_spent_amount ? (
+                  <Text style={styles.insightDate}>{formatMoney(importSummary.most_spent_amount)}</Text>
+                ) : null}
               </View>
             ) : null}
             {importSummary.date_range ? (

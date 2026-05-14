@@ -34,6 +34,11 @@ def _ensure_financial_profile_columns() -> None:
         ledger_columns = {column["name"] for column in inspector.get_columns("ledger_entries")} if "ledger_entries" in inspector.get_table_names() else set()
         if "ledger_entries" in inspector.get_table_names() and "money_scope" not in ledger_columns:
             connection.execute(text("ALTER TABLE ledger_entries ADD COLUMN money_scope VARCHAR(20)"))
+        if "loans" in inspector.get_table_names():
+            loan_columns = {column["name"] for column in inspector.get_columns("loans")}
+            if "confirmed" not in loan_columns:
+                connection.execute(text("ALTER TABLE loans ADD COLUMN confirmed BOOLEAN DEFAULT 1"))
+                connection.execute(text("UPDATE loans SET confirmed = 1 WHERE confirmed IS NULL"))
 
 
 @asynccontextmanager

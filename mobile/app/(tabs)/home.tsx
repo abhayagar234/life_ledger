@@ -59,6 +59,17 @@ function daysSince(value?: string | null) {
   return Math.max(Math.round((today.getTime() - parsed.getTime()) / (1000 * 60 * 60 * 24)), 0);
 }
 
+function daysUntil(value?: string | null) {
+  if (!value) {
+    return null;
+  }
+  const parsed = new Date(value);
+  const today = new Date();
+  parsed.setHours(0, 0, 0, 0);
+  today.setHours(0, 0, 0, 0);
+  return Math.max(Math.round((parsed.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)), 1);
+}
+
 function buildSafeToSpendHelper(
   language: LanguageCode,
   profile: { income_pattern?: string | null; next_income_in_days?: number | null; salary_day_of_month?: number | null } | null,
@@ -603,7 +614,9 @@ export default function HomeScreen() {
   const persona = buildPersona(profile.user_type, language);
   const staleLabel = buildStaleLabel(language, cashflow?.latest_activity_date);
   const staleCashDays = daysSince(cashflow?.latest_cash_update_date);
+  const nextIncomeDays = daysUntil(cashflow?.next_income_date);
   const keepAsideCopy = buildKeepAsideCopy(language);
+  const recentLedgerEntries = dashboard.recentLedgerEntries ?? [];
   const showStaleCashBanner = Boolean(cashflow?.cash_is_stale);
   const schemeCards = buildSchemeCards(language, profile.user_type);
   const creditCardOutstandingWatchouts =
@@ -826,14 +839,19 @@ export default function HomeScreen() {
           </View>
 
           <View style={styles.metricRow}>
-            <View style={[commonStyles.card, styles.metricCard]}>
-              <Pressable onPress={() => router.push("/edit-daily-needs" as never)} style={styles.metricHeaderButton}>
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => router.push("/edit-daily-needs")}
+              style={({ pressed }) => [commonStyles.card, styles.metricCard, pressed ? styles.metricCardPressed : null]}
+            >
+              <View style={styles.metricHeaderButton}>
                 <Text style={styles.metricLabel}>
                 {cashflow.daily_needs_required > 0 && cashflow.daily_needs_buffer <= 0
                   ? t(language, "dailyNeedsToProtect")
                   : t(language, "dailyNeedsCovered")}
                 </Text>
-              </Pressable>
+                <Ionicons name="create-outline" size={16} color={theme.colors.textMuted} />
+              </View>
               <Text style={styles.metricValue}>
                 {formatMoney(cashflow.daily_needs_required > 0 && cashflow.daily_needs_buffer <= 0 ? cashflow.daily_needs_required : cashflow.daily_needs_buffer)}
               </Text>
@@ -847,7 +865,12 @@ export default function HomeScreen() {
                       : homeCopy.ofNeededTillNextIncome(formatMoney(cashflow.daily_needs_required))}
                 {cashflow.baseline_daily_spend > 0 ? ` · ${formatMoney(cashflow.baseline_daily_spend)}/day` : ""}
               </Text>
-            </View>
+              {cashflow.baseline_daily_spend > 0 && nextIncomeDays ? (
+                <Text style={styles.metricSubHelper}>
+                  {`${formatMoney(cashflow.baseline_daily_spend)}/day × ${nextIncomeDays} day${nextIncomeDays === 1 ? "" : "s"}`}
+                </Text>
+              ) : null}
+            </Pressable>
             <View style={[commonStyles.card, styles.metricCard]}>
               <Text style={styles.metricLabel}>{dataMode === "real" ? t(language, "bankSeen") : t(language, "bankSeenSample")}</Text>
               <Text style={styles.metricValue}>{formatMoney(cashflow.working_bank_balance || displayedBankSeen)}</Text>
@@ -872,6 +895,32 @@ export default function HomeScreen() {
               </Text>
             </View>
           </View>
+
+          {recentLedgerEntries.length > 0 ? (
+            <View style={[commonStyles.card, commonStyles.shadow, styles.recentCard]}>
+              <Text style={styles.recentTitle}>Recent updates</Text>
+              {recentLedgerEntries.slice(0, 4).map((entry) => {
+                const isMoneyIn = entry.cash_direction === "in" || entry.entry_type === "income";
+                const sign = isMoneyIn ? "+" : "-";
+                const dateLabel = new Date(entry.entry_date).toLocaleDateString("en-IN", {
+                  day: "numeric",
+                  month: "short"
+                });
+                const label = entry.description || entry.counterparty_name || entry.entry_type.replace(/_/g, " ");
+                return (
+                  <View key={entry.id} style={styles.recentRow}>
+                    <View style={styles.recentCopy}>
+                      <Text style={styles.recentLabel}>{label}</Text>
+                      <Text style={styles.recentDate}>{dateLabel}</Text>
+                    </View>
+                    <Text style={[styles.recentAmount, isMoneyIn ? styles.recentAmountIn : styles.recentAmountOut]}>
+                      {`${sign} ${formatMoney(entry.amount)}`}
+                    </Text>
+                  </View>
+                );
+              })}
+            </View>
+          ) : null}
 
           <View style={[commonStyles.card, commonStyles.shadow, styles.requiredCard]}>
             <View style={styles.requiredHeader}>
@@ -1349,8 +1398,14 @@ const styles = StyleSheet.create({
     flex: 1,
     gap: theme.spacing.xs
   },
+  metricCardPressed: {
+    opacity: 0.86
+  },
   metricHeaderButton: {
-    alignSelf: "flex-start"
+    alignSelf: "flex-start",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6
   },
   metricLabel: {
     fontSize: theme.typography.caption,
@@ -1364,6 +1419,46 @@ const styles = StyleSheet.create({
   metricHelper: {
     fontSize: theme.typography.caption,
     color: theme.colors.textMuted
+  },
+  metricSubHelper: {
+    fontSize: 12,
+    color: theme.colors.textMuted
+  },
+  recentCard: {
+    gap: theme.spacing.sm
+  },
+  recentTitle: {
+    fontSize: theme.typography.body,
+    fontWeight: "700",
+    color: theme.colors.text
+  },
+  recentRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: theme.spacing.sm
+  },
+  recentCopy: {
+    flex: 1,
+    gap: 2
+  },
+  recentLabel: {
+    fontSize: theme.typography.caption,
+    color: theme.colors.text
+  },
+  recentDate: {
+    fontSize: 12,
+    color: theme.colors.textMuted
+  },
+  recentAmount: {
+    fontSize: theme.typography.caption,
+    fontWeight: "700"
+  },
+  recentAmountIn: {
+    color: theme.colors.success
+  },
+  recentAmountOut: {
+    color: theme.colors.danger
   },
   section: {
     gap: theme.spacing.md

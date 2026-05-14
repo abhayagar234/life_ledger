@@ -1,7 +1,7 @@
 from datetime import date
 from typing import Optional
 
-from sqlalchemy import Date, ForeignKey, Numeric, String, Text
+from sqlalchemy import Boolean, Date, ForeignKey, Numeric, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
@@ -26,6 +26,7 @@ class Loan(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     status: Mapped[str] = mapped_column(String(50), default="active", nullable=False)
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     is_business: Mapped[Optional[bool]] = mapped_column(nullable=True)
+    confirmed: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
     user = relationship("User", back_populates="loans")
     ledger_entries = relationship("LedgerEntry", back_populates="loan")

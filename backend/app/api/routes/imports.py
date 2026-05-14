@@ -155,6 +155,7 @@ def get_import_summary(
     total_transfer = 0.0
     category_totals: dict[str, float] = defaultdict(float)
     dates = []
+    non_spend_categories = {"salary_income", "business_income", "transfers", "savings_investments"}
 
     for txn in transactions:
         amount = float(txn.amount)
@@ -165,18 +166,20 @@ def get_import_summary(
 
         category = txn.category_code or "uncategorized"
         description_lower = (txn.description_clean or "").lower()
+        raw_lower = (txn.description_raw or "").lower()
 
-        category_totals[category] += amount
+        if txn.direction == "debit" and category not in non_spend_categories:
+            category_totals[category] += amount
 
-        # Track by source type
-        if txn.source_type == "upi":
-            total_upi += amount
-        elif "atm" in description_lower or "cash withdrawal" in description_lower:
-            total_cash_withdrawal += amount
-        elif category == "cash_withdrawal":
-            total_cash_withdrawal += amount
-        elif category == "transfers":
-            total_transfer += amount
+        if txn.direction == "debit":
+            if "upi" in description_lower or "upi" in raw_lower:
+                total_upi += amount
+            if "atm" in description_lower or "cash withdrawal" in description_lower or "atm wdl" in description_lower:
+                total_cash_withdrawal += amount
+            if category == "cash_withdrawal":
+                total_cash_withdrawal += amount
+            if category == "transfers":
+                total_transfer += amount
 
         if txn.transaction_date:
             dates.append(txn.transaction_date.isoformat())
@@ -190,14 +193,22 @@ def get_import_summary(
 
     most_spent_category = None
     most_spent_amount = 0
-    if sorted_categories:
-        most_spent_category = sorted_categories[0][0].replace("_", " ").title()
-        most_spent_amount = sorted_categories[0][1]
+    meaningful = [item for item in sorted_categories if item[0] != "uncategorized"]
+    top_for_badge = meaningful[0] if meaningful else (sorted_categories[0] if sorted_categories else None)
+    if top_for_badge:
+        most_spent_category = top_for_badge[0].replace("_", " ").title()
+        most_spent_amount = top_for_badge[1]
 
     date_range = None
+    period_days = None
+    period_months = None
     if dates:
         dates.sort()
         date_range = (dates[0], dates[-1])
+        start = date.fromisoformat(dates[0])
+        end = date.fromisoformat(dates[-1])
+        period_days = max((end - start).days + 1, 1)
+        period_months = round(period_days / 30.4, 1)
 
     return ImportSummaryResponse(
         total_income=round(total_income, 2),
@@ -209,6 +220,8 @@ def get_import_summary(
         most_spent_category=most_spent_category,
         most_spent_amount=round(most_spent_amount, 2),
         date_range=date_range,
+        period_days=period_days,
+        period_months=period_months,
     )
 
 

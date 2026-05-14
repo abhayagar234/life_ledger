@@ -50,3 +50,4 @@ class CashflowSummaryResponse(BaseModel):
     explanations: list[str]
     watchouts: list[str]
     protected_due_items: list[ProtectedDueItem]
+    pending_pattern_dues: list[ProtectedDueItem] = []

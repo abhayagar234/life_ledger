@@ -141,6 +141,7 @@ export type CashflowSummary = {
   explanations: string[];
   watchouts: string[];
   protected_due_items: ProtectedDueItem[];
+  pending_pattern_dues?: ProtectedDueItem[];
   bank_balance_needs_confirmation?: boolean;
   detected_bank_balance?: number;
   working_bank_balance?: number;
@@ -267,6 +268,8 @@ export type ImportSummaryResponse = {
   most_spent_category?: string | null;
   most_spent_amount?: number;
   date_range?: [string, string] | null;
+  period_days?: number | null;
+  period_months?: number | null;
 };
 
 export type UpcomingDueCreate = {

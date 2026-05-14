@@ -441,6 +441,7 @@ def _manual_due_items(
             EMIPayment.user_id == user_id,
             EMIPayment.due_date >= cycle_start,
             EMIPayment.due_date <= next_income_date,
+            Loan.confirmed == True,
         )
         .order_by(EMIPayment.due_date.asc(), EMIPayment.created_at.asc())
         .all()
@@ -670,7 +671,8 @@ def build_cashflow_summary(db: Session, user_id: str, as_of: date | None = None)
         if category in ROLLING_DAILY_NEEDS_CATEGORIES:
             trailing_essential_spend += amount
 
-    bank_observed_balance += _manual_bank_activity(db, user_id, cycle_start, as_of_date)
+    manual_bank_delta = _manual_bank_activity(db, user_id, cycle_start, as_of_date)
+    bank_observed_balance += manual_bank_delta
     manual_trailing_total, manual_trailing_essential = _manual_trailing_spend(db, user_id, trailing_start, as_of_date)
     trailing_total_spend += manual_trailing_total
     trailing_essential_spend += manual_trailing_essential
@@ -689,11 +691,13 @@ def build_cashflow_summary(db: Session, user_id: str, as_of: date | None = None)
     emi_due_total = sum(
         float(emi.amount_due) - float(emi.amount_paid)
         for emi in db.query(EMIPayment)
+        .join(Loan, Loan.id == EMIPayment.loan_id)
         .filter(
             EMIPayment.user_id == user_id,
             EMIPayment.status != "paid",
             EMIPayment.due_date >= as_of_date,
             EMIPayment.due_date <= next_income_date,
+            Loan.confirmed == True,
         )
         .all()
     )
@@ -703,7 +707,13 @@ def build_cashflow_summary(db: Session, user_id: str, as_of: date | None = None)
     )
     manual_due_items = _manual_due_items(db, user_id, cycle_start, as_of_date, next_income_date)
     manual_card_due_total = _manual_card_due_activity(db, user_id, cycle_start, as_of_date)
-    gross_protected_dues = max(emi_due_total, 0.0) + pattern_due_total + manual_card_due_total
+
+    # Pattern dues are now pending confirmation - don't count them in protected_dues
+    # They'll be returned separately for user to confirm/dismiss
+    pending_pattern_dues = pattern_due_items
+
+    # Only count confirmed manual dues + card activity in protected_dues
+    gross_protected_dues = max(emi_due_total, 0.0) + manual_card_due_total
     manual_due_paid_total = _manual_due_payments(db, user_id, cycle_start, as_of_date)
     protected_dues = _round_money(gross_protected_dues - manual_due_paid_total)
 
@@ -719,7 +729,13 @@ def build_cashflow_summary(db: Session, user_id: str, as_of: date | None = None)
         2,
     )
     confirmed_bank_balance = float(profile.bank_balance_confirmed) if profile and profile.bank_balance_confirmed is not None else None
-    working_bank_balance = round(max(confirmed_bank_balance if confirmed_bank_balance is not None else detected_bank_balance, 0.0), 2)
+    working_bank_balance_base = round(
+        max(confirmed_bank_balance if confirmed_bank_balance is not None else detected_bank_balance, 0.0),
+        2,
+    )
+    # Manual online/UPI entries should immediately affect visible bank money
+    # until statement import catches up.
+    working_bank_balance = round(max(working_bank_balance_base + manual_bank_delta, 0.0), 2)
     bank_balance_needs_confirmation = detected_bank_balance > 0 and confirmed_bank_balance is None
     business_reserve = max(float(profile.business_reserve_amount), 0.0) if profile and profile.business_reserve_amount is not None else 0.0
 
@@ -857,4 +873,5 @@ def build_cashflow_summary(db: Session, user_id: str, as_of: date | None = None)
         explanations=explanations,
         watchouts=watchouts,
         protected_due_items=protected_due_items,
+        pending_pattern_dues=pending_pattern_dues,
     )

@@ -68,3 +68,5 @@ class ImportSummaryResponse(BaseModel):
     most_spent_category: str | None = None
     most_spent_amount: float = 0
     date_range: tuple[str, str] | None = None
+    period_days: int | None = None
+    period_months: float | None = None

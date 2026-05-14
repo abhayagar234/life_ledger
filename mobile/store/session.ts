@@ -5,6 +5,7 @@ import { createJSONStorage, persist } from "zustand/middleware";
 import {
   demoLogin,
   getCashflowSummary,
+  listLedgerEntries,
   getMonthlySummary,
   getProfile,
   getSpendingSummary,
@@ -30,6 +31,7 @@ type DashboardState = {
   spendingSummary: SpendingInsightsResponse | null;
   insightCards: InsightCard[];
   cashflowSummary: CashflowSummary | null;
+  recentLedgerEntries: import("../services/api/types").LedgerEntryRead[];
 };
 
 type OnboardingDraft = {
@@ -78,7 +80,8 @@ function createEmptyDashboard(): DashboardState {
     monthlySummary: null,
     spendingSummary: null,
     insightCards: [],
-    cashflowSummary: null
+    cashflowSummary: null,
+    recentLedgerEntries: []
   };
 }
 
@@ -304,13 +307,14 @@ export const useSessionStore = create<SessionStore>()(
         try {
           const { year, month } = currentPeriod();
           const cashflowSummary = await getCashflowSummary(userId);
-          const [monthlySummaryResult, spendingSummaryResult, insightCardsResult] = await Promise.allSettled([
+          const [monthlySummaryResult, spendingSummaryResult, insightCardsResult, ledgerEntriesResult] = await Promise.allSettled([
             getMonthlySummary(userId, year, month),
             getSpendingSummary(userId, year, month),
-            listInsights(userId, year, month)
+            listInsights(userId, year, month),
+            listLedgerEntries(userId)
           ]);
 
-          const optionalErrors = [monthlySummaryResult, spendingSummaryResult, insightCardsResult].filter(
+          const optionalErrors = [monthlySummaryResult, spendingSummaryResult, insightCardsResult, ledgerEntriesResult].filter(
             (result): result is PromiseRejectedResult => result.status === "rejected"
           );
 
@@ -319,7 +323,9 @@ export const useSessionStore = create<SessionStore>()(
               monthlySummary: monthlySummaryResult.status === "fulfilled" ? monthlySummaryResult.value : null,
               spendingSummary: spendingSummaryResult.status === "fulfilled" ? spendingSummaryResult.value : null,
               insightCards: insightCardsResult.status === "fulfilled" ? insightCardsResult.value : [],
-              cashflowSummary
+              cashflowSummary,
+              recentLedgerEntries:
+                ledgerEntriesResult.status === "fulfilled" ? ledgerEntriesResult.value.slice(0, 5) : []
             },
             error: optionalErrors.length
               ? "Some secondary insights could not refresh, but your main cashflow answer is up to date."
