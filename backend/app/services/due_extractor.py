@@ -35,6 +35,24 @@ NEVER_AUTO_DUE_CATEGORIES = {
     "shopping",
     "food",
 }
+SUBSCRIPTION_HINTS = {
+    "google play",
+    "netflix",
+    "spotify",
+    "youtube",
+    "prime video",
+    "apple.com",
+    "hotstar",
+}
+
+CANONICAL_MERCHANT_HINTS: list[tuple[str, tuple[str, ...]]] = [
+    ("google play", ("google play", "googleplay", "gplay", "play store", "app purchase")),
+    ("netflix", ("netflix", "netflix.com", "netflix en")),
+    ("spotify", ("spotify", "spotify in")),
+    ("youtube", ("youtube", "youtube premium")),
+    ("amazon prime", ("prime video", "amazon prime", "amzn prime")),
+    ("hotstar", ("hotstar", "disney hotstar")),
+]
 
 
 @dataclass
@@ -54,6 +72,13 @@ def _normalize_counterparty(cp: str | None) -> str:
         return ""
     tokens = [token for token in cp.lower().split() if not any(char.isdigit() for char in token)]
     return " ".join(tokens[:4]).strip()
+
+def _canonical_counterparty(txn: NormalizedTransaction) -> str:
+    description = (txn.description_clean or txn.description_raw or "").lower()
+    for canonical, hints in CANONICAL_MERCHANT_HINTS:
+        if any(hint in description for hint in hints):
+            return canonical
+    return _normalize_counterparty(txn.counterparty_name)
 
 
 def _amount_bucket(amount: float) -> float:
@@ -90,6 +115,9 @@ def _next_due_after_today(last_seen: date, frequency: str) -> date:
 def _is_confirmable_due(txn: NormalizedTransaction) -> bool:
     category = txn.category_code or "uncategorized"
     if category in NEVER_AUTO_DUE_CATEGORIES:
+        description = (txn.description_clean or txn.description_raw or "").lower()
+        if any(hint in description for hint in SUBSCRIPTION_HINTS):
+            return True
         return False
     if category in CONFIRMABLE_DUE_CATEGORIES:
         return True
@@ -100,7 +128,8 @@ def extract_detected_dues(
     db: Session,
     *,
     user_id: str,
-    upload_id: str,
+    upload_id: str | None = None,
+    upload_ids: list[str] | None = None,
     min_confidence: float = 0.75,
 ) -> list[DetectedDue]:
     """
@@ -110,25 +139,24 @@ def extract_detected_dues(
     Computes periodicity (weekly/monthly) via gap analysis.
     Returns list of DetectedDue sorted by confidence DESC, amount DESC.
     """
-    transactions = (
-        db.query(NormalizedTransaction)
-        .filter(
-            NormalizedTransaction.user_id == user_id,
-            NormalizedTransaction.import_file_id == upload_id,
-            NormalizedTransaction.direction == "debit",
-            NormalizedTransaction.dedupe_status != "duplicate",
-            NormalizedTransaction.amount > 0,
-        )
-        .order_by(NormalizedTransaction.transaction_date.asc())
-        .all()
+    query = db.query(NormalizedTransaction).filter(
+        NormalizedTransaction.user_id == user_id,
+        NormalizedTransaction.direction == "debit",
+        NormalizedTransaction.dedupe_status != "duplicate",
+        NormalizedTransaction.amount > 0,
     )
+    if upload_ids:
+        query = query.filter(NormalizedTransaction.import_file_id.in_(upload_ids))
+    elif upload_id is not None:
+        query = query.filter(NormalizedTransaction.import_file_id == upload_id)
+    transactions = query.order_by(NormalizedTransaction.transaction_date.asc()).all()
 
     groups: dict[tuple[str, float], list[NormalizedTransaction]] = {}
 
     for txn in transactions:
         if not _is_confirmable_due(txn):
             continue
-        cp_norm = _normalize_counterparty(txn.counterparty_name)
+        cp_norm = _canonical_counterparty(txn)
         if not cp_norm:
             continue
         amount_bucket = _amount_bucket(txn.amount)
@@ -143,7 +171,8 @@ def extract_detected_dues(
         if len(txns) < 2:
             continue
 
-        dates = sorted([t.transaction_date for t in txns])
+        # Merge cross-statement overlaps by collapsing same-day duplicates.
+        dates = sorted(set(t.transaction_date for t in txns))
         gaps = [(dates[i + 1] - dates[i]).days for i in range(len(dates) - 1)]
 
         if not gaps:

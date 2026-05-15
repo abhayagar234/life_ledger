@@ -124,6 +124,7 @@ def process_import_file(
     file_type: str,
     content: bytes,
     force_reprocess: bool = True,
+    source_hint: str | None = None,
 ) -> FileUploadResponse:
     file_hash = compute_file_hash(content)
     existing_file = (
@@ -161,7 +162,9 @@ def process_import_file(
         raise ValueError("File contains no transaction data. Check that the file includes headers and at least one row of data.")
 
     bank_hint = extract_bank_hint_for_file_type(file_type, content)
-    source_name, source_type = detect_source(file_name, parsed_file.headers, parsed_file.sheet_names, bank_hint)
+    source_name, source_type = detect_source(
+        file_name, parsed_file.headers, parsed_file.sheet_names, bank_hint, source_hint
+    )
     mapping = map_columns(parsed_file.headers)
 
     if not mapping or (not mapping.get("amount") and not mapping.get("debit")):
@@ -335,5 +338,52 @@ def process_import_file(
         error_rows=import_file.error_rows,
         error_samples=error_samples,
         preview=preview,
+        uploaded_at=import_file.uploaded_at,
+    )
+
+
+def create_failed_import_response(
+    db: Session,
+    *,
+    user_id: str,
+    file_name: str,
+    file_type: str,
+    content: bytes,
+    failure_message: str,
+) -> FileUploadResponse:
+    file_hash = compute_file_hash(content)
+    import_file = ImportFile(
+        user_id=user_id,
+        file_name=file_name,
+        file_type=file_type,
+        source_name="unknown_source",
+        source_type="other",
+        file_hash=file_hash,
+        status="needs_review",
+        total_rows=0,
+        imported_rows=0,
+        duplicate_rows=0,
+        error_rows=1,
+        processed_at=datetime.now(timezone.utc),
+    )
+    db.add(import_file)
+    db.commit()
+    db.refresh(import_file)
+    return FileUploadResponse(
+        upload_id=import_file.id,
+        file_name=import_file.file_name,
+        source_name=import_file.source_name,
+        source_type=import_file.source_type,
+        file_type=import_file.file_type,
+        selected_sheet=None,
+        header_row_index=None,
+        status=import_file.status,
+        message=failure_message,
+        total_rows=0,
+        imported_rows=0,
+        duplicate_rows=0,
+        error_rows=1,
+        error_samples=[failure_message],
+        preview=[],
         uploaded_at=import_file.uploaded_at,
     )

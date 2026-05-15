@@ -48,6 +48,8 @@ def normalize_date(value: object) -> date | None:
         "%d/%m/%Y",
         "%d.%m.%Y",
         "%d.%m.%y",
+        "%d %b %Y",
+        "%d %b %y",
         "%Y/%m/%d",
         "%d %b %Y",
         "%d-%b-%y",

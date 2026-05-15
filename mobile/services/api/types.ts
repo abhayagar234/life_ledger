@@ -270,6 +270,24 @@ export type ImportSummaryResponse = {
   date_range?: [string, string] | null;
   period_days?: number | null;
   period_months?: number | null;
+  credit_card_insights?: Record<string, string> | null;
+};
+
+export type ImportCoverageResponse = {
+  total_uploads: number;
+  total_transactions: number;
+  date_range?: [string, string] | null;
+  period_days?: number | null;
+  period_months?: number | null;
+  account_coverage: Record<string, number>;
+  total_spend: number;
+  total_income: number;
+  total_upi: number;
+  total_cash_withdrawal: number;
+  top_categories_current_month: Record<string, number>;
+  most_spent_category_current_month?: string | null;
+  most_spent_amount_current_month?: number;
+  recurring_dues: DetectedDueResponse[];
 };
 
 export type UpcomingDueCreate = {

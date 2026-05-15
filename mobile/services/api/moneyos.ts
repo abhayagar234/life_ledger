@@ -9,6 +9,7 @@ import type {
   DemoActionResponse,
   FileUploadResponse,
   ImportSummaryResponse,
+  ImportCoverageResponse,
   InsightCard,
   LedgerEntryCreate,
   LedgerEntryRead,
@@ -129,7 +130,11 @@ export function createUpcomingDue(userId: string, payload: UpcomingDueCreate) {
   });
 }
 
-export async function uploadImportFile(userId: string, file: { uri: string; name: string; mimeType: string }) {
+export async function uploadImportFile(
+  userId: string,
+  file: { uri: string; name: string; mimeType: string },
+  sourceHint?: "bank" | "card" | "other"
+) {
   const form = new FormData();
   form.append("file", {
     uri: file.uri,
@@ -139,6 +144,9 @@ export async function uploadImportFile(userId: string, file: { uri: string; name
 
   const url = new URL("/imports/files", getApiBaseUrl());
   url.searchParams.set("user_id", userId);
+  if (sourceHint) {
+    url.searchParams.set("source_hint", sourceHint);
+  }
   const response = await fetch(url.toString(), {
     method: "POST",
     body: form
@@ -167,6 +175,13 @@ export function confirmDetectedDues(userId: string, uploadId: string, confirmedD
     method: "POST",
     userId,
     body: JSON.stringify({ confirmed_dues: confirmedDues })
+  });
+}
+
+export function getImportCoverage(userId: string, uploadIds?: string[]) {
+  const query = uploadIds && uploadIds.length > 0 ? `?upload_ids=${encodeURIComponent(uploadIds.join(","))}` : "";
+  return apiRequest<ImportCoverageResponse>(`/imports/coverage${query}`, {
+    userId
   });
 }
 

@@ -70,3 +70,21 @@ class ImportSummaryResponse(BaseModel):
     date_range: tuple[str, str] | None = None
     period_days: int | None = None
     period_months: float | None = None
+    credit_card_insights: dict[str, str] | None = None
+
+
+class ImportCoverageResponse(BaseModel):
+    total_uploads: int
+    total_transactions: int
+    date_range: tuple[str, str] | None = None
+    period_days: int | None = None
+    period_months: float | None = None
+    account_coverage: dict[str, int]
+    total_spend: float
+    total_income: float
+    total_upi: float
+    total_cash_withdrawal: float
+    top_categories_current_month: dict[str, float]
+    most_spent_category_current_month: str | None = None
+    most_spent_amount_current_month: float = 0
+    recurring_dues: list[DetectedDueResponse]

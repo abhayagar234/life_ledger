@@ -292,6 +292,9 @@ export default function AddEntryScreen() {
   const refreshDashboard = useSessionStore((state) => state.refreshDashboard);
   const markHasRealData = useSessionStore((state) => state.markHasRealData);
   const currentCashOnHand = useSessionStore((state) => state.dashboard.cashflowSummary?.cash_on_hand ?? 0);
+  const currentWorkingBankBalance = useSessionStore(
+    (state) => state.dashboard.cashflowSummary?.working_bank_balance ?? 0
+  );
   const profile = useSessionStore((state) => state.profile);
   const isBusinessUser = profile?.user_type === "business_self_employed" || profile?.receives_salary_besides_business;
   const initialMode =
@@ -406,6 +409,31 @@ export default function AddEntryScreen() {
       setSelected(params.mode);
     }
   }, [params.mode]);
+
+  useEffect(() => {
+    // Prevent stale amount/source state from carrying across different entry intents.
+    if (selected === "cash_set") {
+      setSource("cash");
+      setSplitCashAmount("");
+      setIsBorrowedMoney(false);
+      return;
+    }
+    if (selected === "cash_day_total") {
+      setSource("cash");
+      setSplitCashAmount("");
+      setIsBorrowedMoney(false);
+      return;
+    }
+    setAmount("");
+    setSplitCashAmount("");
+    setMinimumAmount("");
+    setIsBorrowedMoney(false);
+    if (selected === "cash_received" || selected === "business_customer_payment") {
+      setSource("cash");
+      return;
+    }
+    setSource("cash");
+  }, [selected]);
 
   useEffect(() => {
     if (!shouldShowMoneyScope) {
@@ -585,7 +613,11 @@ export default function AddEntryScreen() {
                 ? t(language, "dayTotalPrompt")
               : duePrefill.dueName && selected === "due_paid"
                 ? duePrefill.dueName
-                : selectedOption.title}
+                : selected === "cash_received"
+                  ? "Cash Received Amount"
+                  : selected === "cash_spent"
+                    ? "Big Cash Spent Amount"
+                    : selectedOption.title}
           </Text>
           <TextInput
             keyboardType="numeric"
@@ -673,6 +705,14 @@ export default function AddEntryScreen() {
         ) && source !== "online" && source !== "card" ? (
           <Text style={styles.noteText}>{`Cash on hand right now: Rs ${Math.round(currentCashOnHand).toLocaleString("en-IN")}`}</Text>
         ) : null}
+        {(
+          selected === "cash_spent" ||
+          selected === "due_paid" ||
+          selected === "business_supplier_expense" ||
+          selected === "business_cash_expense"
+        ) && (source === "online" || source === "split") ? (
+          <Text style={styles.noteText}>{`Bank money right now: Rs ${Math.max(Math.round(currentWorkingBankBalance), 0).toLocaleString("en-IN")}`}</Text>
+        ) : null}
       </View>
 
       <Button
@@ -701,6 +741,12 @@ export default function AddEntryScreen() {
           }
 
           const numericSplitCashAmount = splitCashAmount.trim() ? Number(splitCashAmount) : 0;
+          const isOutflowMode =
+            selected === "cash_spent" ||
+            selected === "cash_day_total" ||
+            selected === "due_paid" ||
+            selected === "business_supplier_expense" ||
+            selected === "business_cash_expense";
           if (source === "split") {
             if (!Number.isFinite(numericSplitCashAmount) || numericSplitCashAmount <= 0) {
               Alert.alert(
@@ -724,22 +770,32 @@ export default function AddEntryScreen() {
               Alert.alert("Cash is short", "The cash part is more than your cash on hand. Lower the cash part or choose Online / UPI.");
               return;
             }
+            const splitOnlineAmount = Math.max(numericAmount - numericSplitCashAmount, 0);
+            if (isOutflowMode && splitOnlineAmount > currentWorkingBankBalance) {
+              Alert.alert(
+                "Bank money is short",
+                "The online / UPI part is more than your current bank money. Lower the online part or update bank balance first."
+              );
+              return;
+            }
           }
 
           if (
-            (
-              selected === "cash_spent" ||
-              selected === "cash_day_total" ||
-              selected === "due_paid" ||
-              selected === "business_supplier_expense" ||
-              selected === "business_cash_expense"
-            ) &&
+            isOutflowMode &&
             source === "cash" &&
             numericAmount > currentCashOnHand
           ) {
             Alert.alert(
               "Cash is short",
               "This amount is more than your current cash on hand. Choose Cash + Online / UPI if the payment was split, or choose Online / UPI."
+            );
+            return;
+          }
+
+          if (isOutflowMode && source === "online" && numericAmount > currentWorkingBankBalance) {
+            Alert.alert(
+              "Bank money is short",
+              "This online / UPI amount is more than your current bank money. Lower the amount or update bank balance first."
             );
             return;
           }
