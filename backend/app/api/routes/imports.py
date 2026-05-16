@@ -336,7 +336,10 @@ def confirm_dues(
                 emi_amount=item.amount,
                 emi_frequency=item.frequency,
                 status="active",
-                notes=f"Auto-detected from import {upload_id}",
+                notes=(
+                    f"Auto-detected from import {upload_id}"
+                    + (f" | category:{item.category_code}" if item.category_code else "")
+                ),
             )
             db.add(loan)
             db.flush()

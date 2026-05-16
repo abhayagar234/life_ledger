@@ -360,6 +360,16 @@ function buildKeepAsideCopy(language: LanguageCode) {
   };
 }
 
+function dailyEditLabel(language: LanguageCode) {
+  if (language === "hi") {
+    return "बदलें";
+  }
+  if (language === "mr") {
+    return "बदला";
+  }
+  return "Edit";
+}
+
 type SchemeCard = {
   name: string;
   benefit: string;
@@ -844,13 +854,16 @@ export default function HomeScreen() {
               onPress={() => router.push("/edit-daily-needs")}
               style={({ pressed }) => [commonStyles.card, styles.metricCard, pressed ? styles.metricCardPressed : null]}
             >
-              <View style={styles.metricHeaderButton}>
+              <View style={styles.metricHeaderRow}>
                 <Text style={styles.metricLabel}>
                 {cashflow.daily_needs_required > 0 && cashflow.daily_needs_buffer <= 0
                   ? t(language, "dailyNeedsToProtect")
                   : t(language, "dailyNeedsCovered")}
                 </Text>
-                <Ionicons name="create-outline" size={16} color={theme.colors.textMuted} />
+                <View style={styles.metricEditCta}>
+                  <Text style={styles.metricEditText}>{dailyEditLabel(language)}</Text>
+                  <Ionicons name="create-outline" size={14} color={theme.colors.primary} />
+                </View>
               </View>
               <Text style={styles.metricValue}>
                 {formatMoney(cashflow.daily_needs_required > 0 && cashflow.daily_needs_buffer <= 0 ? cashflow.daily_needs_required : cashflow.daily_needs_buffer)}
@@ -1401,11 +1414,26 @@ const styles = StyleSheet.create({
   metricCardPressed: {
     opacity: 0.86
   },
-  metricHeaderButton: {
-    alignSelf: "flex-start",
+  metricHeaderRow: {
+    width: "100%",
     flexDirection: "row",
     alignItems: "center",
-    gap: 6
+    justifyContent: "space-between",
+    gap: 8
+  },
+  metricEditCta: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: theme.radius.pill,
+    backgroundColor: "#EEF7F3"
+  },
+  metricEditText: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: theme.colors.primary
   },
   metricLabel: {
     fontSize: theme.typography.caption,

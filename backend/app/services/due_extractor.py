@@ -44,6 +44,17 @@ SUBSCRIPTION_HINTS = {
     "hotstar",
 }
 
+ACH_DUE_HINTS = {
+    "ach",
+    "achdr",
+    "nach",
+    "ecs",
+    "autopay",
+    "auto pay",
+    "standing instruction",
+    "si debit",
+}
+
 INVESTMENT_RECURRING_HINTS = {
     "sip",
     "camsip",
@@ -128,11 +139,16 @@ def _is_confirmable_due(txn: NormalizedTransaction) -> bool:
     category = txn.category_code or "uncategorized"
     description = (txn.description_clean or txn.description_raw or "").lower()
     counterparty = (txn.counterparty_name or "").lower()
+    ach_like = any(hint in description or hint in counterparty for hint in ACH_DUE_HINTS)
 
     if category == "savings_investments":
         if any(hint in description or hint in counterparty for hint in INVESTMENT_RECURRING_HINTS):
             return True
         return False
+
+    # ACH/NACH/ECS debits are commonly EMI/mandatory dues even when category mapping is weak.
+    if ach_like and float(txn.amount or 0) >= 500:
+        return True
 
     if category in NEVER_AUTO_DUE_CATEGORIES:
         if any(hint in description for hint in SUBSCRIPTION_HINTS):

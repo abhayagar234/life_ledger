@@ -27,6 +27,7 @@ categories:
   - emi_loans
   - rent
   - subscriptions
+  - credit_card_payment
   - savings_investments
   - farming_expense
   - business_expense
@@ -161,7 +162,7 @@ merchant_rules:
       - ipcamsip
       - mutual fun
 
-  bills:
+  credit_card_payment:
     merchant_group: credit_card
     confidence: 0.95
     merchants:
@@ -244,7 +245,7 @@ regex_rules:
 
   - id: sbi_card_payment
     pattern: '(sbicard|sbi\s+card|sbi\s+credit\s+card|billdesk.*sbi|sbi\s+cards\s+and\s+payment)'
-    category: bills
+    category: credit_card_payment
     is_fixed_obligation: true
     confidence: 0.93
 

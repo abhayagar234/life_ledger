@@ -91,8 +91,8 @@ export function createLedgerEntry(userId: string, payload: LedgerEntryCreate) {
   });
 }
 
-export function listLedgerEntries(userId: string) {
-  return apiRequest<LedgerEntryRead[]>("/ledger-entries", {
+export function listLedgerEntries(userId: string, limit = 50) {
+  return apiRequest<LedgerEntryRead[]>(`/ledger-entries?limit=${limit}`, {
     userId
   });
 }
