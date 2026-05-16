@@ -153,19 +153,25 @@ merchant_rules:
       - kuvera
       - sbicap
       - sbi securities
+      - camsip
+      - bpay
+      - hdfc mutua
+      - hdfc mutual
+      - icici prud
+      - ipcamsip
+      - mutual fun
 
   bills:
     merchant_group: credit_card
     confidence: 0.95
     merchants:
       - sbi card
-      - hdfc bank
-      - icici bank
-      - icici credit
-      - axis bank
-      - kotak bank
       - billdesk
       - credit card payment
+      - hdfc credit card
+      - icici credit card
+      - axis credit card
+      - kotak credit card
 
 
 keyword_rules:
