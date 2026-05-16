@@ -1,0 +1,111 @@
+<svg width="1600" height="980" viewBox="0 0 1600 980" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1600" height="980" fill="#EFE6D9"/>
+  <rect x="0" y="0" width="1600" height="230" fill="url(#heroBg)"/>
+  <text x="90" y="92" fill="#FFFDF9" font-family="Arial, sans-serif" font-size="46" font-weight="700">Life Ledger MoneyOS</text>
+  <text x="90" y="138" fill="#F5EFE6" font-family="Arial, sans-serif" font-size="22">Trusted consumer ledger for cashflow intelligence, planning, and action.</text>
+
+  <g transform="translate(82,250)">
+    <rect x="0" y="0" width="420" height="640" rx="42" fill="#1E2A31"/>
+    <rect x="16" y="16" width="388" height="608" rx="34" fill="#F5EFE6"/>
+    <rect x="150" y="28" width="120" height="10" rx="5" fill="#D4C6B0"/>
+    <text x="42" y="86" fill="#5D6A66" font-family="Arial, sans-serif" font-size="16">Life Ledger MoneyOS</text>
+    <text x="42" y="128" fill="#21313A" font-family="Arial, sans-serif" font-size="34" font-weight="700">Money made</text>
+    <text x="42" y="166" fill="#21313A" font-family="Arial, sans-serif" font-size="34" font-weight="700">simple</text>
+    <text x="42" y="218" fill="#5D6A66" font-family="Arial, sans-serif" font-size="18">Track income, expense, cash, and</text>
+    <text x="42" y="243" fill="#5D6A66" font-family="Arial, sans-serif" font-size="18">loans in one calm place.</text>
+    <rect x="42" y="280" width="304" height="244" rx="28" fill="url(#welcomeCard)"/>
+    <circle cx="290" cy="344" r="88" fill="rgba(255,255,255,0.09)"/>
+    <text x="70" y="334" fill="#D7EEEA" font-family="Arial, sans-serif" font-size="14" letter-spacing="1.3">NO BANK CONNECTION NEEDED</text>
+    <text x="70" y="384" fill="#FFFDF9" font-family="Arial, sans-serif" font-size="28" font-weight="700">Start in under</text>
+    <text x="70" y="418" fill="#FFFDF9" font-family="Arial, sans-serif" font-size="28" font-weight="700">2 minutes</text>
+    <text x="70" y="464" fill="#DDEDEA" font-family="Arial, sans-serif" font-size="17">Manual use works from day one.</text>
+    <rect x="42" y="548" width="304" height="58" rx="20" fill="#0B6E69"/>
+    <text x="176" y="584" text-anchor="middle" fill="#FFFDF9" font-family="Arial, sans-serif" font-size="20" font-weight="700">Start</text>
+  </g>
+
+  <g transform="translate(590,250)">
+    <rect x="0" y="0" width="420" height="640" rx="42" fill="#1E2A31"/>
+    <rect x="16" y="16" width="388" height="608" rx="34" fill="#F5EFE6"/>
+    <rect x="150" y="28" width="120" height="10" rx="5" fill="#D4C6B0"/>
+    <text x="42" y="80" fill="#21313A" font-family="Arial, sans-serif" font-size="28" font-weight="700">What fits you best?</text>
+    <text x="42" y="110" fill="#6C766F" font-family="Arial, sans-serif" font-size="16">We will show the right home screen and shortcuts.</text>
+
+    <rect x="42" y="144" width="304" height="78" rx="22" fill="#FFFFFF" stroke="#D7CBB9"/>
+    <circle cx="79" cy="183" r="18" fill="#EAE2D4"/>
+    <text x="110" y="178" fill="#21313A" font-family="Arial, sans-serif" font-size="18" font-weight="700">Salaried</text>
+    <text x="110" y="200" fill="#6C766F" font-family="Arial, sans-serif" font-size="14">Monthly pay and regular bills</text>
+
+    <rect x="42" y="236" width="304" height="78" rx="22" fill="#F2FAF8" stroke="#0B6E69" stroke-width="2"/>
+    <circle cx="79" cy="275" r="18" fill="#0B6E69"/>
+    <text x="110" y="270" fill="#21313A" font-family="Arial, sans-serif" font-size="18" font-weight="700">Business / Self-Employed</text>
+    <text x="110" y="292" fill="#6C766F" font-family="Arial, sans-serif" font-size="14">Sales, expenses, and dues</text>
+
+    <rect x="42" y="328" width="304" height="78" rx="22" fill="#FFFFFF" stroke="#D7CBB9"/>
+    <circle cx="79" cy="367" r="18" fill="#EAE2D4"/>
+    <text x="110" y="362" fill="#21313A" font-family="Arial, sans-serif" font-size="18" font-weight="700">Farmer / Seasonal</text>
+    <text x="110" y="384" fill="#6C766F" font-family="Arial, sans-serif" font-size="14">Income that comes in waves</text>
+
+    <rect x="42" y="420" width="304" height="78" rx="22" fill="#FFFFFF" stroke="#D7CBB9"/>
+    <circle cx="79" cy="459" r="18" fill="#EAE2D4"/>
+    <text x="110" y="454" fill="#21313A" font-family="Arial, sans-serif" font-size="18" font-weight="700">Daily Wage</text>
+    <text x="110" y="476" fill="#6C766F" font-family="Arial, sans-serif" font-size="14">Fast income and cash tracking</text>
+
+    <rect x="42" y="548" width="304" height="58" rx="20" fill="#0B6E69"/>
+    <text x="194" y="584" text-anchor="middle" fill="#FFFDF9" font-family="Arial, sans-serif" font-size="20" font-weight="700">Continue</text>
+  </g>
+
+  <g transform="translate(1098,250)">
+    <rect x="0" y="0" width="420" height="640" rx="42" fill="#1E2A31"/>
+    <rect x="16" y="16" width="388" height="608" rx="34" fill="#F5EFE6"/>
+    <rect x="150" y="28" width="120" height="10" rx="5" fill="#D4C6B0"/>
+    <text x="42" y="78" fill="#21313A" font-family="Arial, sans-serif" font-size="24" font-weight="700">Hello, Abhay</text>
+    <text x="42" y="106" fill="#6C766F" font-family="Arial, sans-serif" font-size="15">A clear cash view for home and business.</text>
+    <rect x="42" y="132" width="304" height="152" rx="28" fill="url(#homeHero)"/>
+    <circle cx="300" cy="160" r="78" fill="rgba(255,255,255,0.08)"/>
+    <text x="66" y="165" fill="#D7EEEA" font-family="Arial, sans-serif" font-size="14" letter-spacing="1.1">MONEY IN</text>
+    <text x="66" y="216" fill="#FFFDF9" font-family="Arial, sans-serif" font-size="38" font-weight="700">Rs 42,000</text>
+    <text x="66" y="248" fill="#DDEDEA" font-family="Arial, sans-serif" font-size="16">this period</text>
+
+    <rect x="42" y="302" width="146" height="102" rx="22" fill="#FFFFFF" stroke="#D7CBB9"/>
+    <text x="60" y="334" fill="#6C766F" font-family="Arial, sans-serif" font-size="13">Money Out</text>
+    <text x="60" y="372" fill="#21313A" font-family="Arial, sans-serif" font-size="24" font-weight="700">Rs 30,100</text>
+    <text x="60" y="394" fill="#6C766F" font-family="Arial, sans-serif" font-size="13">business + home</text>
+
+    <rect x="200" y="302" width="146" height="102" rx="22" fill="#FFFFFF" stroke="#D7CBB9"/>
+    <text x="218" y="334" fill="#6C766F" font-family="Arial, sans-serif" font-size="13">Safe To Spend</text>
+    <text x="218" y="372" fill="#21313A" font-family="Arial, sans-serif" font-size="24" font-weight="700">Rs 4,500</text>
+    <text x="218" y="394" fill="#6C766F" font-family="Arial, sans-serif" font-size="13">after reserves</text>
+
+    <text x="42" y="438" fill="#21313A" font-family="Arial, sans-serif" font-size="18" font-weight="700">Quick Actions</text>
+    <rect x="42" y="454" width="146" height="84" rx="22" fill="#FFFFFF" stroke="#D7CBB9"/>
+    <rect x="200" y="454" width="146" height="84" rx="22" fill="#FFFFFF" stroke="#D7CBB9"/>
+    <rect x="42" y="550" width="146" height="84" rx="22" fill="#FFFFFF" stroke="#D7CBB9"/>
+    <rect x="200" y="550" width="146" height="84" rx="22" fill="#FFFFFF" stroke="#D7CBB9"/>
+    <text x="64" y="486" fill="#21313A" font-family="Arial, sans-serif" font-size="17" font-weight="700">Add Sale</text>
+    <text x="64" y="508" fill="#6C766F" font-family="Arial, sans-serif" font-size="13">record money in</text>
+    <text x="222" y="486" fill="#21313A" font-family="Arial, sans-serif" font-size="17" font-weight="700">Add Expense</text>
+    <text x="222" y="508" fill="#6C766F" font-family="Arial, sans-serif" font-size="13">track costs</text>
+    <text x="64" y="582" fill="#21313A" font-family="Arial, sans-serif" font-size="17" font-weight="700">Add Due</text>
+    <text x="64" y="604" fill="#6C766F" font-family="Arial, sans-serif" font-size="13">owed or payable</text>
+    <text x="222" y="582" fill="#21313A" font-family="Arial, sans-serif" font-size="17" font-weight="700">Set Cash</text>
+    <text x="222" y="604" fill="#6C766F" font-family="Arial, sans-serif" font-size="13">sync cash on hand</text>
+  </g>
+
+  <text x="92" y="926" fill="#21313A" font-family="Arial, sans-serif" font-size="18" font-weight="700">Current visual direction</text>
+  <text x="92" y="954" fill="#5D6A66" font-family="Arial, sans-serif" font-size="16">Warm palette, calm premium cards, large type, one-question onboarding, and persona-led dashboards.</text>
+
+  <defs>
+    <linearGradient id="heroBg" x1="0" y1="0" x2="1600" y2="230" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0E5B57"/>
+      <stop offset="1" stop-color="#14343C"/>
+    </linearGradient>
+    <linearGradient id="welcomeCard" x1="42" y1="280" x2="346" y2="524" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0D6661"/>
+      <stop offset="1" stop-color="#0A4A46"/>
+    </linearGradient>
+    <linearGradient id="homeHero" x1="42" y1="132" x2="346" y2="284" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0D6661"/>
+      <stop offset="1" stop-color="#0A4A46"/>
+    </linearGradient>
+  </defs>
+</svg>

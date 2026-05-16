@@ -1,0 +1,315 @@
+version: 1
+default_category: uncategorized
+confidence_thresholds:
+  high: 0.90
+  good: 0.75
+  weak: 0.50
+  unresolved_below: 0.50
+
+rule_hierarchy:
+  - structured_rules
+  - merchant_rules
+  - keyword_rules
+  - regex_rules
+  - transfer_rules
+  - recurring_overlay
+  - fixed_obligation_overlay
+  - unresolved_queue
+
+categories:
+  - groceries
+  - health
+  - entertainment
+  - travel
+  - bills
+  - shopping
+  - salary_income
+  - emi_loans
+  - rent
+  - subscriptions
+  - savings_investments
+  - farming_expense
+  - business_expense
+  - transfers
+  - uncategorized
+
+structured_rules:
+  - id: salary_credit
+    when:
+      direction: credit
+      description_keywords: [salary, payroll, salary credit, sal credit]
+    category: salary_income
+    confidence: 0.95
+
+  - id: emi_payment
+    when:
+      description_keywords: [emi, loan repayment, finance, interest]
+    category: emi_loans
+    is_fixed_obligation: true
+    confidence: 0.95
+
+  - id: rent_payment
+    when:
+      description_keywords: [rent, house rent]
+    category: rent
+    is_fixed_obligation: true
+    confidence: 0.95
+
+  - id: transfer_self
+    when:
+      description_keywords: [cash withdrawal, self transfer, own account, wallet add cash]
+    category: transfers
+    confidence: 0.95
+
+merchant_rules:
+  groceries:
+    merchant_group: quick_commerce
+    confidence: 0.95
+    merchants:
+      - zepto
+      - instamart
+      - blinkit
+      - amazon fresh
+      - jiomart
+      - dmart
+      - dmart ready
+      - bigbasket
+      - more retail
+
+  dining:
+    merchant_group: food_delivery
+    confidence: 0.95
+    merchants:
+      - zomato
+      - swiggy
+      - uber eats
+      - magicpin
+      - faasos
+      - dominos
+
+  shopping:
+    merchant_group: online_retail
+    confidence: 0.93
+    merchants:
+      - amazon
+      - amazon pay
+      - flipkart
+      - myntra
+      - ajio
+      - nykaa
+      - unacademy
+
+  health:
+    merchant_group: pharmacy_health
+    confidence: 0.90
+    merchants:
+      - apollo
+      - apollo pharmacy
+      - medplus
+      - netmeds
+      - practo
+      - 1mg
+
+  entertainment:
+    merchant_group: movies_events
+    confidence: 0.90
+    merchants:
+      - bookmyshow
+      - pvr
+      - inox
+      - paytm movies
+
+  subscriptions:
+    merchant_group: digital_subscription
+    confidence: 0.90
+    merchants:
+      - netflix
+      - spotify
+      - youtube premium
+      - hotstar
+      - prime video
+      - disney hotstar
+
+  travel:
+    merchant_group: travel_transport
+    confidence: 0.90
+    merchants:
+      - uber
+      - ola
+      - rapido
+      - irctc
+      - makemytrip
+      - goibibo
+
+  savings_investments:
+    merchant_group: investment_platform
+    confidence: 0.95
+    merchants:
+      - zerodha
+      - paytm money
+      - groww
+      - upstox
+      - smallcase
+      - kuvera
+      - sbicap
+      - sbi securities
+      - camsip
+      - bpay
+      - hdfc mutua
+      - hdfc mutual
+      - icici prud
+      - ipcamsip
+      - mutual fun
+
+  bills:
+    merchant_group: credit_card
+    confidence: 0.95
+    merchants:
+      - sbi card
+      - billdesk
+      - credit card payment
+      - hdfc credit card
+      - icici credit card
+      - axis credit card
+      - kotak credit card
+
+
+keyword_rules:
+  groceries:
+    confidence: 0.80
+    keywords: [grocery, groceries, supermarket, kirana, vegetables, fruits, fresh]
+
+  dining:
+    confidence: 0.80
+    keywords: [food, restaurant, delivery, zomato, swiggy, order, meal, lunch, dinner]
+
+  health:
+    confidence: 0.80
+    keywords: [hospital, pharmacy, medicine, clinic, lab, diagnostic, doctor, health]
+
+  entertainment:
+    confidence: 0.80
+    keywords: [movie, cinema, game, gaming, show, entertainment, ticket, booking]
+
+  travel:
+    confidence: 0.80
+    keywords: [bus, train, fuel, petrol, diesel, toll, cab, auto, metro, ticket, booking]
+
+  bills:
+    confidence: 0.80
+    keywords: [electricity, water, gas, recharge, broadband, mobile bill, utility, phone bill]
+
+  subscriptions:
+    confidence: 0.80
+    keywords: [subscription, renewal, monthly plan, ott, premium, membership]
+
+  savings_investments:
+    confidence: 0.80
+    keywords: [fd, rd, sip, mutual fund, investment, savings, trading, demat]
+
+  farming_expense:
+    confidence: 0.80
+    keywords: [seed, fertilizer, pesticide, tractor, crop, mandi]
+
+  business_expense:
+    confidence: 0.80
+    keywords: [supplier, wholesale, inventory, stock, gst, shop, vendor]
+
+regex_rules:
+  - id: upi_transfer_like
+    pattern: '(upi|imps|neft).*(transfer|to self|own account)'
+    category: transfers
+    confidence: 0.72
+
+  - id: salary_short_forms
+    pattern: '(sal|salary)\s*(cred|credit)'
+    category: salary_income
+    confidence: 0.78
+
+  - id: credit_card_bill
+    pattern: '(credit card bill|cc bill)'
+    category: emi_loans
+    is_fixed_obligation: true
+    confidence: 0.85
+
+  - id: sweep_fd_transfer
+    pattern: 'sweep\s+(tfr|trf|trft|from)'
+    category: transfers
+    confidence: 0.97
+
+  - id: atm_cash_transfer
+    pattern: 'atm\s+(wdl|cash|withdrawal)'
+    category: transfers
+    confidence: 0.95
+
+  - id: sbi_card_payment
+    pattern: '(sbicard|sbi\s+card|sbi\s+credit\s+card|billdesk.*sbi|sbi\s+cards\s+and\s+payment)'
+    category: bills
+    is_fixed_obligation: true
+    confidence: 0.93
+
+  - id: investment_outflow
+    pattern: '(paytm\s*money|sbicap|zerodha|groww|upstox|smallcase|kuvera|nsdl|cdsl)'
+    category: savings_investments
+    confidence: 0.90
+
+  - id: dividend_credit
+    pattern: '(cemtex\s+dep|pfn\s+\d|dividend\s+credit)'
+    category: savings_investments
+    confidence: 0.88
+
+  - id: interest_credit
+    pattern: 'interest\s+credit'
+    category: savings_investments
+    confidence: 0.92
+
+  - id: razorpay_income
+    pattern: '(rzpx|razorpay\s+pvt|rzp\s+pvt)'
+    category: salary_income
+    confidence: 0.82
+
+transfer_rules:
+  confidence: 0.95
+  keywords:
+    - transfer to self
+    - self transfer
+    - own account
+    - cash withdrawal
+    - wallet add cash
+    - transfer between accounts
+    - sweep tfr
+    - sweep trf
+    - sweep trft
+    - sweep from
+    - atm wdl
+    - atm cash
+
+recurring_detection:
+  enabled: true
+  rules:
+    minimum_prior_matches: 2
+    lookback_days: 90
+    weekly_gap_days_min: 6
+    weekly_gap_days_max: 8
+    monthly_gap_days_min: 27
+    monthly_gap_days_max: 33
+    amount_tolerance_ratio: 0.10
+
+fixed_obligation_detection:
+  strong_categories:
+    - emi_loans
+    - rent
+    - subscriptions
+  keyword_overrides:
+    - electricity
+    - broadband
+    - school fee
+    - insurance
+    - loan
+    - emi
+
+unresolved_queue:
+  enabled: true
+  if_confidence_below: 0.50
+  if_conflicting_categories: true
+  if_empty_clean_description: true
