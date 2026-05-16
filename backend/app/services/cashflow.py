@@ -23,6 +23,14 @@ SAVINGS_CATEGORIES = {"savings_investments"}
 FIXED_DUE_CATEGORIES = {"rent", "emi_loans", "bills", "subscriptions", "insurance", "credit_card_payment"}
 ROLLING_DAILY_NEEDS_CATEGORIES = {"groceries", "health", "travel", "farming_expense"}
 STRICT_PATTERN_DUE_CATEGORIES = {"rent", "emi_loans", "subscriptions", "insurance", "credit_card_payment"}
+CARD_PAYMENT_KEYWORDS = (
+    "credit card payment",
+    "card payment",
+    "direct debit payment",
+    "cc payment",
+    "sbicard",
+    "sbi card",
+)
 
 
 def _round_money(value: float) -> float:
@@ -31,6 +39,13 @@ def _round_money(value: float) -> float:
 
 def _fmt_money(value: float) -> str:
     return f"Rs {round(value):,}"
+
+
+def _is_card_payment_transfer(row: NormalizedTransaction) -> bool:
+    description = (row.description_clean or row.description_raw or "").lower()
+    if any(keyword in description for keyword in CARD_PAYMENT_KEYWORDS):
+        return True
+    return (row.category_code or "") == "credit_card_payment"
 
 
 def _parse_balance_value(value: object) -> float | None:
@@ -651,6 +666,7 @@ def build_cashflow_summary(db: Session, user_id: str, as_of: date | None = None)
         amount = float(row.amount)
         category = row.category_code or ""
         is_bank_like = row.source_type != "credit_card"
+        is_card_payment_transfer = _is_card_payment_transfer(row)
         in_current_cycle = row.transaction_date >= cycle_start
 
         if row.direction == "credit":
@@ -664,6 +680,9 @@ def build_cashflow_summary(db: Session, user_id: str, as_of: date | None = None)
             bank_observed_balance -= amount
 
         if row.transaction_date < trailing_start or row.transaction_date > spend_window_end:
+            continue
+        if is_card_payment_transfer:
+            # Avoid double counting: card purchases are spend events, bill payment is settlement transfer.
             continue
 
         if category not in SAVINGS_CATEGORIES:
@@ -767,6 +786,17 @@ def build_cashflow_summary(db: Session, user_id: str, as_of: date | None = None)
     if latest_activity_date and (as_of_date - latest_activity_date).days > 14:
         confidence = _lower_confidence(confidence, "low")
     if len(rows) < 10 or trailing_total_spend <= 0:
+        confidence = _lower_confidence(confidence, "low")
+    # Thin statement coverage should down-rank confidence even if rows exist.
+    unique_uploads = len({row.import_file_id for row in rows if row.import_file_id})
+    coverage_days = (
+        (max(row.transaction_date for row in rows) - min(row.transaction_date for row in rows)).days + 1
+        if rows
+        else 0
+    )
+    if unique_uploads <= 1 or coverage_days < 30:
+        confidence = _lower_confidence(confidence, "medium")
+    if coverage_days < 14:
         confidence = _lower_confidence(confidence, "low")
 
     safe_to_spend = _round_money(safe_leftover)

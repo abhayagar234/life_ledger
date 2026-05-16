@@ -26,6 +26,26 @@ COUNTERPARTY_NOISE = {
     "ref",
 }
 
+MERCHANT_NOISE_TOKENS = {
+    "upi",
+    "dr",
+    "cr",
+    "paymenttou",
+    "payment",
+    "paytm",
+    "hdfc",
+    "icici",
+    "axis",
+    "sbi",
+    "yes",
+    "bank",
+    "indusind",
+    "l",
+    "p",
+    "b",
+    "in",
+}
+
 
 def normalize_date(value: object) -> date | None:
     if value is None or value == "":
@@ -48,6 +68,8 @@ def normalize_date(value: object) -> date | None:
         "%d/%m/%Y",
         "%d.%m.%Y",
         "%d.%m.%y",
+        "%d %b %Y",
+        "%d %b %y",
         "%Y/%m/%d",
         "%d %b %Y",
         "%d-%b-%y",
@@ -129,26 +151,63 @@ def extract_upi_merchant(description_raw: str) -> str | None:
     if not description_raw:
         return None
 
-    # Normalize: collapse multiple whitespace/newlines into single space
+    def _clean_candidate(candidate: str) -> str | None:
+        text = " ".join((candidate or "").lower().split())
+        if not text:
+            return None
+        text = re.sub(r"[^a-z0-9\s]", " ", text)
+        parts = []
+        for token in text.split():
+            if token in MERCHANT_NOISE_TOKENS:
+                continue
+            if token.isdigit():
+                continue
+            if len(token) == 1:
+                continue
+            # Remove obvious hash/reference tokens.
+            if re.fullmatch(r"[a-f0-9]{8,}", token):
+                continue
+            parts.append(token)
+        if not parts:
+            return None
+        # Keep enough tokens for real merchant names.
+        merchant = " ".join(parts[:5]).strip()
+        if len(merchant) < 3:
+            return None
+        return merchant
+
+    # Normalize: collapse multiple whitespace/newlines but keep separators
     normalized = " ".join(description_raw.split())
     normalized_lower = normalized.lower()
 
-    # Try SBI format: UPI/DR|CR/digits/merchant (merchant ends at / or becomes last part)
+    # Parse UPI path fragments; first human-readable fragment after UPI is usually merchant.
+    path_match = re.search(r"upi/([^\\n]+)", normalized_lower, re.IGNORECASE)
+    if path_match:
+        tail = path_match.group(1)
+        fragments = [frag.strip() for frag in tail.split("/") if frag.strip()]
+        for fragment in fragments:
+            # Skip direction/ref/id fragments.
+            if fragment in {"dr", "cr"}:
+                continue
+            if re.fullmatch(r"[0-9a-z\.\-@_]{8,}", fragment):
+                continue
+            cleaned = _clean_candidate(fragment)
+            if cleaned:
+                return cleaned
+
+    # SBI style fallback: UPI/DR|CR/<ref>/<merchant>
     match = re.search(r'upi/(?:dr|cr)/\d+/([^/]+?)(?:/|$)', normalized_lower, re.IGNORECASE)
     if match:
-        merchant = match.group(1).strip()
-        if merchant and not re.fullmatch(r'[\d\s]+', merchant):
-            return merchant
+        cleaned = _clean_candidate(match.group(1))
+        if cleaned:
+            return cleaned
 
-    # Try ICICI format: UPI/merchant/handle/... (merchant is 2nd part before next /)
-    match = re.search(r'upi/([^/]+?)/[^/]+/(?:upi|hdfc|union|icici|axis|sbi|bank)?', normalized_lower, re.IGNORECASE)
+    # Generic fallback: UPI/<merchant>/<handle>/...
+    match = re.search(r'upi/([^/]+?)/[^/]+/', normalized_lower, re.IGNORECASE)
     if match:
-        potential_merchant = match.group(1).strip()
-        # Reject if it looks like a transaction code (all digits or very short)
-        if (potential_merchant
-            and not re.fullmatch(r'[\d\s]+', potential_merchant)
-            and len(potential_merchant) > 2):
-            return potential_merchant
+        cleaned = _clean_candidate(match.group(1))
+        if cleaned:
+            return cleaned
 
     return None
 

@@ -8,6 +8,7 @@ from app.models.ledger_entry import LedgerEntry
 from app.models.loan import Loan
 from app.models.emi_payment import EMIPayment
 from app.models.monthly_summary import MonthlySummary
+from app.models.user_category_alias import UserCategoryAlias
 from app.models.user import User
 
 __all__ = [
@@ -22,4 +23,5 @@ __all__ = [
     "ImportRow",
     "NormalizedTransaction",
     "MonthlySummary",
+    "UserCategoryAlias",
 ]

@@ -28,6 +28,7 @@ from app.models.import_file import ImportFile
 from app.models.import_row import ImportRow
 from app.models.normalized_transaction import NormalizedTransaction
 from app.schemas.imports import FileUploadResponse, ImportPreviewRow
+from app.services.category_alias import get_user_alias_lookup, match_alias_category
 
 
 @dataclass
@@ -124,6 +125,7 @@ def process_import_file(
     file_type: str,
     content: bytes,
     force_reprocess: bool = True,
+    source_hint: str | None = None,
 ) -> FileUploadResponse:
     file_hash = compute_file_hash(content)
     existing_file = (
@@ -161,7 +163,9 @@ def process_import_file(
         raise ValueError("File contains no transaction data. Check that the file includes headers and at least one row of data.")
 
     bank_hint = extract_bank_hint_for_file_type(file_type, content)
-    source_name, source_type = detect_source(file_name, parsed_file.headers, parsed_file.sheet_names, bank_hint)
+    source_name, source_type = detect_source(
+        file_name, parsed_file.headers, parsed_file.sheet_names, bank_hint, source_hint
+    )
     mapping = map_columns(parsed_file.headers)
 
     if not mapping or (not mapping.get("amount") and not mapping.get("debit")):
@@ -187,6 +191,7 @@ def process_import_file(
     error_rows = 0
     error_samples: list[str] = []
     preview: list[ImportPreviewRow] = []
+    alias_lookup = get_user_alias_lookup(db, user_id)
 
     for index, raw_row in enumerate(parsed_file.rows, start=1):
         raw_description = _first_non_empty(raw_row, [mapping.get("description", "")])
@@ -240,6 +245,7 @@ def process_import_file(
             amount=normalized_amount,
             direction=direction,
             description_clean=description_clean,
+            raw_description=description_raw,
             source_name=source_name,
         )
         existing_transaction = (
@@ -270,6 +276,16 @@ def process_import_file(
             ),
             transaction_date=transaction_date,
         )
+        alias_category = match_alias_category(
+            alias_lookup,
+            counterparty_name=counterparty,
+            description_clean=description_clean,
+        )
+        if alias_category:
+            categorization.category = alias_category
+            categorization.subcategory = None
+            categorization.unresolved = False
+            categorization.confidence_score = max(categorization.confidence_score, 0.92)
 
         import_row.parse_status = "parsed"
         import_row.parse_errors = []
@@ -335,5 +351,52 @@ def process_import_file(
         error_rows=import_file.error_rows,
         error_samples=error_samples,
         preview=preview,
+        uploaded_at=import_file.uploaded_at,
+    )
+
+
+def create_failed_import_response(
+    db: Session,
+    *,
+    user_id: str,
+    file_name: str,
+    file_type: str,
+    content: bytes,
+    failure_message: str,
+) -> FileUploadResponse:
+    file_hash = compute_file_hash(content)
+    import_file = ImportFile(
+        user_id=user_id,
+        file_name=file_name,
+        file_type=file_type,
+        source_name="unknown_source",
+        source_type="other",
+        file_hash=file_hash,
+        status="needs_review",
+        total_rows=0,
+        imported_rows=0,
+        duplicate_rows=0,
+        error_rows=1,
+        processed_at=datetime.now(timezone.utc),
+    )
+    db.add(import_file)
+    db.commit()
+    db.refresh(import_file)
+    return FileUploadResponse(
+        upload_id=import_file.id,
+        file_name=import_file.file_name,
+        source_name=import_file.source_name,
+        source_type=import_file.source_type,
+        file_type=import_file.file_type,
+        selected_sheet=None,
+        header_row_index=None,
+        status=import_file.status,
+        message=failure_message,
+        total_rows=0,
+        imported_rows=0,
+        duplicate_rows=0,
+        error_rows=1,
+        error_samples=[failure_message],
+        preview=[],
         uploaded_at=import_file.uploaded_at,
     )

@@ -265,11 +265,56 @@ export type ImportSummaryResponse = {
   total_cash_withdrawal: number;
   total_transfer: number;
   top_categories: Record<string, number>;
+  top_merchants?: Record<string, number>;
+  category_coverage_ratio?: number;
+  uncategorized_spend?: number;
   most_spent_category?: string | null;
   most_spent_amount?: number;
   date_range?: [string, string] | null;
   period_days?: number | null;
   period_months?: number | null;
+  credit_card_insights?: Record<string, string> | null;
+};
+
+export type ImportCoverageResponse = {
+  total_uploads: number;
+  total_transactions: number;
+  date_range?: [string, string] | null;
+  period_days?: number | null;
+  period_months?: number | null;
+  account_coverage: Record<string, number>;
+  total_spend: number;
+  total_income: number;
+  total_upi: number;
+  total_cash_withdrawal: number;
+  top_categories_current_month: Record<string, number>;
+  top_categories_overall?: Record<string, number>;
+  top_merchants_overall?: Record<string, number>;
+  category_coverage_ratio?: number;
+  uncategorized_spend_overall?: number;
+  most_spent_category_current_month?: string | null;
+  most_spent_amount_current_month?: number;
+  recurring_dues: DetectedDueResponse[];
+  category_help_candidates?: CategoryHelpCandidate[];
+};
+
+export type CategoryHelpCandidate = {
+  merchant_key: string;
+  merchant_label: string;
+  total_amount: number;
+  transaction_count: number;
+};
+
+export type CategoryMappingItem = {
+  merchant_key: string;
+  merchant_label: string;
+  category_code: string;
+};
+
+export type CategoryMappingResponse = {
+  saved_mappings: number;
+  updated_transactions: number;
+  message: string;
 };
 
 export type UpcomingDueCreate = {

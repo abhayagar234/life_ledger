@@ -45,7 +45,19 @@ BRAND_TYPE_RULES = {
     "health_pharmacy": {
         "category": "health",
         "confidence": 0.90,
-        "patterns": ["apollo", "medplus", "netmeds", "practo", "1mg", "pharmeasy"],
+        "patterns": [
+            "apollo",
+            "medplus",
+            "netmeds",
+            "practo",
+            "1mg",
+            "pharmeasy",
+            "manipal",
+            "hospital",
+            "clinic",
+            "diagnostic",
+            "lab",
+        ],
     },
     "entertainment": {
         "category": "entertainment",
@@ -55,29 +67,88 @@ BRAND_TYPE_RULES = {
     "subscriptions": {
         "category": "subscriptions",
         "confidence": 0.90,
-        "patterns": ["netflix", "spotify", "youtube premium", "hotstar", "prime video", "disney"],
+        "patterns": [
+            "netflix",
+            "spotify",
+            "youtube premium",
+            "hotstar",
+            "prime video",
+            "disney",
+            "google play",
+            "play store",
+        ],
     },
     "travel_transport": {
         "category": "travel",
         "confidence": 0.90,
-        "patterns": ["uber", "ola", "rapido", "irctc", "makemytrip", "goibibo", "air", "flight"],
+        "patterns": [
+            "uber",
+            "ola",
+            "rapido",
+            "irctc",
+            "makemytrip",
+            "goibibo",
+            "air",
+            "flight",
+            "indianoil",
+            "hpcl",
+            "fuel",
+            "petrol",
+            "diesel",
+        ],
     },
     "investment_platform": {
         "category": "savings_investments",
         "confidence": 0.95,
-        "patterns": ["zerodha", "paytm money", "groww", "upstox", "smallcase", "kuvera", "sbicap", "sbi securities"],
+        "patterns": [
+            "zerodha",
+            "paytm money",
+            "groww",
+            "upstox",
+            "smallcase",
+            "kuvera",
+            "sbicap",
+            "sbi securities",
+            "camsip",
+            "bpay",
+            "hdfc mutua",
+            "hdfc mutual",
+            "icici prud",
+            "ipcamsip",
+            "mutual fun",
+        ],
     },
     "credit_card_payment": {
         "category": "bills",
         "confidence": 0.95,
         "is_fixed_obligation": True,
-        "patterns": ["credit card", "sbi card", "sbicard", "billdesk", "kotak", "axis bank", "icici", "hdfc"],
+        "patterns": [
+            "credit card",
+            "sbi card",
+            "sbicard",
+            "billdesk",
+            "card payment",
+            "credit card bill",
+            "hdfc credit card",
+            "icici credit card",
+            "axis credit card",
+            "kotak credit card",
+            "direct debit payment(ach)",
+        ],
     },
     "payment_gateway": {
         "category": None,  # Fallback, needs deeper inspection
         "confidence": 0.85,
         "patterns": ["paytm", "google pay", "phonpe", "whatsapp pay", "airtel pay"],
     },
+}
+
+
+MERCHANT_KEYWORD_HINTS = {
+    "health": ["hospital", "clinic", "med", "pharma", "manipal", "diagnostic"],
+    "groceries": ["superm", "supermarket", "mart", "kirana", "grocery", "bhagwati", "jan seva"],
+    "travel": ["uber", "ola", "rapido", "fuel", "petrol", "diesel", "indianoil", "hpcl", "transport"],
+    "subscriptions": ["google play", "netflix", "spotify", "hotstar", "youtube premium", "prime video"],
 }
 
 
@@ -116,6 +187,15 @@ def classify_merchant(merchant_name: str | None) -> MerchantClassification:
                 )
 
     if not all_matches:
+        for category, keywords in MERCHANT_KEYWORD_HINTS.items():
+            for keyword in keywords:
+                if keyword in merchant_lower:
+                    return MerchantClassification(
+                        category=category,
+                        confidence=0.82,
+                        brand_type="keyword_hint",
+                        merchant_match=keyword,
+                    )
         return MerchantClassification(category=None, confidence=0.0, brand_type=None, merchant_match=None)
 
     # Prioritize: primary merchants first, then longest match
@@ -178,6 +258,22 @@ def detect_payment_gateway_purpose(merchant_name: str, description: str | None) 
     investment_keywords = ["zerodha", "paytm money", "groww", "investment", "trading", "mutual", "sip"]
     if any(keyword in desc for keyword in investment_keywords):
         return "savings_investments", 0.80
+
+    subscription_keywords = ["google play", "netflix", "spotify", "youtube", "hotstar", "prime video", "subscription"]
+    if any(keyword in desc for keyword in subscription_keywords):
+        return "subscriptions", 0.88
+
+    health_keywords = ["hospital", "clinic", "pharmacy", "medical", "doctor", "manipal", "apollo"]
+    if any(keyword in desc for keyword in health_keywords):
+        return "health", 0.82
+
+    grocery_keywords = ["superm", "supermarket", "grocery", "mart", "kirana", "bhagwati", "jan seva"]
+    if any(keyword in desc for keyword in grocery_keywords):
+        return "groceries", 0.80
+
+    transport_keywords = ["uber", "ola", "rapido", "fuel", "petrol", "diesel", "transport", "travel", "indianoil", "hpcl"]
+    if any(keyword in desc for keyword in transport_keywords):
+        return "travel", 0.80
 
     bill_keywords = ["bill", "electricity", "water", "gas", "insurance", "premium"]
     if any(keyword in desc for keyword in bill_keywords):

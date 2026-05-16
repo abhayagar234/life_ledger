@@ -11,6 +11,9 @@ HEADER_SYNONYMS = {
         "transaction date/time",
         "value date",
         "created date",
+        "txn dt",
+        "trans date",
+        "posting date",
     },
     "posted_date": {"posted date", "post date", "settlement date"},
     "description": {
@@ -83,6 +86,11 @@ def map_columns(headers: Iterable[str]) -> dict[str, str]:
     if "direction" not in mapping:
         for header in normalized_headers:
             if any(token in header for token in {"type", "dr", "cr", "nature", "payment"}):
+                mapping["direction"] = normalized_to_original[header]
+                break
+    if "direction" not in mapping:
+        for header in normalized_headers:
+            if "debit/credit" in header or "credit/debit" in header:
                 mapping["direction"] = normalized_to_original[header]
                 break
 

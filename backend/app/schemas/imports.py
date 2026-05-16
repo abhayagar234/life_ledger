@@ -58,6 +58,29 @@ class ConfirmDuesResponse(BaseModel):
     message: str
 
 
+class CategoryHelpCandidate(BaseModel):
+    merchant_key: str
+    merchant_label: str
+    total_amount: float
+    transaction_count: int
+
+
+class CategoryMappingItem(BaseModel):
+    merchant_key: str
+    merchant_label: str
+    category_code: str
+
+
+class CategoryMappingRequest(BaseModel):
+    mappings: list[CategoryMappingItem]
+
+
+class CategoryMappingResponse(BaseModel):
+    saved_mappings: int
+    updated_transactions: int
+    message: str
+
+
 class ImportSummaryResponse(BaseModel):
     total_income: float
     total_spend: float
@@ -70,3 +93,29 @@ class ImportSummaryResponse(BaseModel):
     date_range: tuple[str, str] | None = None
     period_days: int | None = None
     period_months: float | None = None
+    top_merchants: dict[str, float] = {}
+    category_coverage_ratio: float = 0
+    uncategorized_spend: float = 0
+    credit_card_insights: dict[str, str] | None = None
+
+
+class ImportCoverageResponse(BaseModel):
+    total_uploads: int
+    total_transactions: int
+    date_range: tuple[str, str] | None = None
+    period_days: int | None = None
+    period_months: float | None = None
+    account_coverage: dict[str, int]
+    total_spend: float
+    total_income: float
+    total_upi: float
+    total_cash_withdrawal: float
+    top_categories_current_month: dict[str, float]
+    top_categories_overall: dict[str, float] = {}
+    top_merchants_overall: dict[str, float] = {}
+    category_coverage_ratio: float = 0
+    uncategorized_spend_overall: float = 0
+    most_spent_category_current_month: str | None = None
+    most_spent_amount_current_month: float = 0
+    recurring_dues: list[DetectedDueResponse]
+    category_help_candidates: list[CategoryHelpCandidate] = []
