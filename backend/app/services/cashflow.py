@@ -725,6 +725,7 @@ def build_cashflow_summary(db: Session, user_id: str, as_of: date | None = None)
         rows, as_of_date, cycle_start, days_until_income, paid_pattern_due_amounts
     )
     manual_due_items = _manual_due_items(db, user_id, cycle_start, as_of_date, next_income_date)
+    manual_due_watchouts = _manual_upcoming_due_watchouts(db, user_id, as_of_date, next_income_date)
     manual_card_due_total = _manual_card_due_activity(db, user_id, cycle_start, as_of_date)
 
     # Pattern dues are now pending confirmation - don't count them in protected_dues
@@ -869,6 +870,22 @@ def build_cashflow_summary(db: Session, user_id: str, as_of: date | None = None)
         [*manual_due_items, *pattern_due_items],
         key=lambda item: (0 if item.status == "pending" else 1, item.due_date, item.name.lower()),
     )
+
+    # Prioritize actionable due reminders (especially dues within next 3 days).
+    urgent_due_watchouts: list[str] = []
+    for item in protected_due_items:
+        if item.status == "paid" or item.remaining_amount <= 0:
+            continue
+        days_left = (item.due_date - as_of_date).days
+        if 0 <= days_left <= 3:
+            urgent_due_watchouts.append(
+                f"{item.name} due in {days_left} day{'s' if days_left != 1 else ''}: {_fmt_money(item.remaining_amount)}."
+            )
+    due_watchouts_combined = [*urgent_due_watchouts, *manual_due_watchouts, *due_watchouts]
+    if due_watchouts_combined:
+        # Keep the list concise and avoid duplicate lines.
+        unique_due_watchouts = list(dict.fromkeys(due_watchouts_combined))
+        watchouts = [*unique_due_watchouts[:3], *watchouts]
 
     return CashflowSummaryResponse(
         as_of_date=as_of_date,

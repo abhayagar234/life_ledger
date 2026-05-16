@@ -539,7 +539,6 @@ export default function ImportStatementScreen() {
                   const selected = selectedDues[key] !== false;
                   const selectedCategory = dueCategorySelections[key] || due.category_code;
                   const expandedCategory = openDueCategoryKey === key;
-                  const editedName = (dueCustomNames[key] ?? due.counterparty_name).trim() || due.counterparty_name;
                   const editedAmountText = dueAmounts[key] ?? String(Math.round(due.amount));
                   return (
                     <View key={key} style={styles.mappingCard}>
@@ -559,6 +558,12 @@ export default function ImportStatementScreen() {
                           </Text>
                         </Pressable>
                       </View>
+                      <View style={styles.dueIdentityRow}>
+                        <Text style={styles.dueIdentityText} numberOfLines={1} ellipsizeMode="tail">
+                          {due.counterparty_name}
+                        </Text>
+                        <Text style={styles.dueIdentityAmount}>{formatMoney(due.amount)}</Text>
+                      </View>
                       <TextInput
                         value={dueCustomNames[key] ?? due.counterparty_name}
                         onChangeText={(value) =>
@@ -571,22 +576,19 @@ export default function ImportStatementScreen() {
                         placeholderTextColor={theme.colors.textMuted}
                         style={styles.dueEditInput}
                       />
-                      <View style={styles.dueEditRow}>
-                        <Text style={styles.dueFieldLabel}>Amount</Text>
-                        <TextInput
-                          keyboardType="numeric"
-                          value={editedAmountText}
-                          onChangeText={(value) =>
-                            setDueAmounts((current) => ({
-                              ...current,
-                              [key]: value.replace(/[^\d.]/g, "")
-                            }))
-                          }
-                          placeholder="9330"
-                          placeholderTextColor={theme.colors.textMuted}
-                          style={styles.dueAmountInput}
-                        />
-                      </View>
+                      <TextInput
+                        keyboardType="numeric"
+                        value={editedAmountText}
+                        onChangeText={(value) =>
+                          setDueAmounts((current) => ({
+                            ...current,
+                            [key]: value.replace(/[^\d.]/g, "")
+                          }))
+                        }
+                        placeholder="Amount (e.g. 9330)"
+                        placeholderTextColor={theme.colors.textMuted}
+                        style={styles.dueAmountInput}
+                      />
                       <Pressable
                         onPress={() =>
                           setOpenDueCategoryKey((current) => (current === key ? null : key))
@@ -986,6 +988,22 @@ const styles = StyleSheet.create({
     fontSize: theme.typography.caption,
     color: theme.colors.textMuted
   },
+  dueIdentityRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: theme.spacing.sm
+  },
+  dueIdentityText: {
+    flex: 1,
+    fontSize: theme.typography.body,
+    fontWeight: "600",
+    color: theme.colors.text
+  },
+  dueIdentityAmount: {
+    fontSize: theme.typography.caption,
+    color: theme.colors.textMuted
+  },
   includeChip: {
     borderRadius: theme.radius.pill,
     paddingHorizontal: 10,
@@ -1020,18 +1038,7 @@ const styles = StyleSheet.create({
     color: theme.colors.text,
     backgroundColor: theme.colors.surfaceMuted
   },
-  dueEditRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: theme.spacing.sm
-  },
-  dueFieldLabel: {
-    width: 58,
-    fontSize: theme.typography.caption,
-    color: theme.colors.textMuted
-  },
   dueAmountInput: {
-    flex: 1,
     minHeight: 40,
     borderWidth: 1,
     borderColor: theme.colors.border,
