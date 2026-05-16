@@ -12,12 +12,21 @@ from app.models.import_file import ImportFile
 from app.models.loan import Loan
 from app.models.user import User
 from app.schemas.imports import (
+    CategoryHelpCandidate,
+    CategoryMappingRequest,
+    CategoryMappingResponse,
     ConfirmDuesRequest,
     ConfirmDuesResponse,
     DetectedDueResponse,
     FileUploadResponse,
     ImportCoverageResponse,
     ImportSummaryResponse,
+)
+from app.services.category_alias import (
+    CategoryMappingInput,
+    apply_aliases_to_uncategorized_transactions,
+    normalize_merchant_key,
+    upsert_user_category_aliases,
 )
 from app.services.due_extractor import extract_detected_dues
 
@@ -50,6 +59,26 @@ def _categorize_import_error(error_msg: str, file_type: str) -> str:
     if file_type == "pdf":
         return "Unable to extract data from PDF. Try exporting as CSV from your bank instead."
     return "We could not fully read this statement format yet. Please try another file or export in CSV format."
+
+
+def _display_merchant_name(txn) -> str:
+    merchant = (txn.counterparty_name or "").strip().lower()
+    if merchant:
+        return " ".join(merchant.split()[:4])
+    description = (txn.description_clean or "").strip().lower()
+    if not description:
+        return "unknown"
+    tokens = [token for token in description.split() if token not in {"upi", "dr", "cr", "bank", "payment"}]
+    if not tokens:
+        return "unknown"
+    return " ".join(tokens[:4])
+
+
+def _candidate_merchant_name(txn) -> str:
+    merchant = (txn.counterparty_name or "").strip()
+    if merchant:
+        return merchant
+    return _display_merchant_name(txn)
 
 
 router = APIRouter(prefix="/imports", tags=["imports"])
@@ -172,6 +201,7 @@ def get_import_summary(
     total_cash_withdrawal = 0.0
     total_transfer = 0.0
     category_totals: dict[str, float] = defaultdict(float)
+    merchant_totals: dict[str, float] = defaultdict(float)
     dates = []
     non_spend_categories = {"salary_income", "business_income", "transfers", "savings_investments"}
 
@@ -188,13 +218,17 @@ def get_import_summary(
 
         if txn.direction == "debit" and category not in non_spend_categories:
             category_totals[category] += amount
+            merchant_totals[_display_merchant_name(txn)] += amount
 
         if txn.direction == "debit":
             if "upi" in description_lower or "upi" in raw_lower:
                 total_upi += amount
-            if "atm" in description_lower or "cash withdrawal" in description_lower or "atm wdl" in description_lower:
-                total_cash_withdrawal += amount
-            if category == "cash_withdrawal":
+            is_pos_atm_purchase = "pos atm" in description_lower or "pos atm" in raw_lower
+            is_atm_like = (
+                ("atm wdl" in description_lower or "atm wdl" in raw_lower)
+                or ("cash withdrawal" in description_lower and not is_pos_atm_purchase)
+            )
+            if (is_atm_like and not is_pos_atm_purchase) or category == "cash_withdrawal":
                 total_cash_withdrawal += amount
             if category == "transfers":
                 total_transfer += amount
@@ -208,6 +242,18 @@ def get_import_summary(
         reverse=True,
     )
     top_categories = dict(sorted_categories[:5])
+    top_merchants = dict(
+        (merchant, round(amt, 2))
+        for merchant, amt in sorted(
+            ((name, value) for name, value in merchant_totals.items() if value > 0 and name != "unknown"),
+            key=lambda item: item[1],
+            reverse=True,
+        )[:5]
+    )
+    uncategorized_spend = float(category_totals.get("uncategorized", 0.0))
+    categorized_spend = sum(value for key, value in category_totals.items() if key != "uncategorized")
+    denominator = categorized_spend + uncategorized_spend
+    category_coverage_ratio = round((categorized_spend / denominator), 4) if denominator > 0 else 1.0
 
     most_spent_category = None
     most_spent_amount = 0
@@ -243,6 +289,9 @@ def get_import_summary(
         total_cash_withdrawal=round(total_cash_withdrawal, 2),
         total_transfer=round(total_transfer, 2),
         top_categories={k: round(v, 2) for k, v in top_categories.items()},
+        top_merchants=top_merchants,
+        category_coverage_ratio=category_coverage_ratio,
+        uncategorized_spend=round(uncategorized_spend, 2),
         most_spent_category=most_spent_category,
         most_spent_amount=round(most_spent_amount, 2),
         date_range=date_range,
@@ -318,6 +367,37 @@ def confirm_dues(
         raise HTTPException(status_code=500, detail=f"Failed to create loans: {str(exc)}") from exc
 
 
+@router.post("/category-mappings", response_model=CategoryMappingResponse)
+def save_category_mappings(
+    payload: CategoryMappingRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> CategoryMappingResponse:
+    if not payload.mappings:
+        return CategoryMappingResponse(saved_mappings=0, updated_transactions=0, message="No mappings provided.")
+
+    try:
+        mapping_inputs = [
+            CategoryMappingInput(
+                merchant_key=item.merchant_key,
+                merchant_label=item.merchant_label,
+                category_code=item.category_code,
+            )
+            for item in payload.mappings
+        ]
+        saved = upsert_user_category_aliases(db, current_user.id, mapping_inputs)
+        updated = apply_aliases_to_uncategorized_transactions(db, current_user.id)
+        db.commit()
+        return CategoryMappingResponse(
+            saved_mappings=saved,
+            updated_transactions=updated,
+            message=f"Saved {saved} mapping(s). Updated {updated} transaction(s).",
+        )
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Could not save category mappings: {str(exc)}") from exc
+
+
 @router.get("/coverage", response_model=ImportCoverageResponse)
 def get_import_coverage(
     upload_ids: str | None = None,
@@ -371,6 +451,9 @@ def get_import_coverage(
     dates: list[str] = []
     account_coverage: dict[str, int] = defaultdict(int)
     latest_month_category_totals: dict[str, float] = defaultdict(float)
+    overall_category_totals: dict[str, float] = defaultdict(float)
+    overall_merchant_totals: dict[str, float] = defaultdict(float)
+    category_help_aggregates: dict[str, dict[str, float | int | str]] = {}
     non_spend_categories = {"salary_income", "business_income", "transfers", "savings_investments"}
 
     for txn in transactions:
@@ -388,13 +471,33 @@ def get_import_coverage(
 
         description_lower = (txn.description_clean or "").lower()
         raw_lower = (txn.description_raw or "").lower()
+        category = txn.category_code or "uncategorized"
+        if txn.direction == "debit" and category not in non_spend_categories:
+            overall_category_totals[category] += amount
+            overall_merchant_totals[_display_merchant_name(txn)] += amount
+        if txn.direction == "debit" and category == "uncategorized" and amount >= 1000:
+            merchant_label = _candidate_merchant_name(txn)
+            merchant_key = normalize_merchant_key(merchant_label)
+            if merchant_key:
+                entry = category_help_aggregates.get(merchant_key)
+                if entry is None:
+                    category_help_aggregates[merchant_key] = {
+                        "merchant_key": merchant_key,
+                        "merchant_label": merchant_label,
+                        "total_amount": float(amount),
+                        "transaction_count": 1,
+                    }
+                else:
+                    entry["total_amount"] = float(entry["total_amount"]) + float(amount)
+                    entry["transaction_count"] = int(entry["transaction_count"]) + 1
         if txn.direction == "debit" and ("upi" in description_lower or "upi" in raw_lower):
             total_upi += amount
-        if txn.direction == "debit" and (
-            "atm" in description_lower or "cash withdrawal" in description_lower or "atm wdl" in description_lower
-        ):
-            total_cash_withdrawal += amount
-        if txn.category_code == "cash_withdrawal" and txn.direction == "debit":
+        is_pos_atm_purchase = "pos atm" in description_lower or "pos atm" in raw_lower
+        is_atm_like = (
+            ("atm wdl" in description_lower or "atm wdl" in raw_lower)
+            or ("cash withdrawal" in description_lower and not is_pos_atm_purchase)
+        )
+        if txn.direction == "debit" and (((is_atm_like and not is_pos_atm_purchase) or txn.category_code == "cash_withdrawal")):
             total_cash_withdrawal += amount
 
         if txn.transaction_date:
@@ -429,6 +532,24 @@ def get_import_coverage(
         reverse=True,
     )
     top_month_categories = dict((cat, round(amt, 2)) for cat, amt in sorted_month_categories[:5])
+    sorted_overall_categories = sorted(
+        ((cat, amt) for cat, amt in overall_category_totals.items() if amt > 0),
+        key=lambda item: item[1],
+        reverse=True,
+    )
+    top_overall_categories = dict((cat, round(amt, 2)) for cat, amt in sorted_overall_categories[:8])
+    top_merchants_overall = dict(
+        (merchant, round(amt, 2))
+        for merchant, amt in sorted(
+            ((name, value) for name, value in overall_merchant_totals.items() if value > 0 and name != "unknown"),
+            key=lambda item: item[1],
+            reverse=True,
+        )[:8]
+    )
+    uncategorized_spend_overall = float(overall_category_totals.get("uncategorized", 0.0))
+    categorized_spend_overall = sum(value for key, value in overall_category_totals.items() if key != "uncategorized")
+    denominator = categorized_spend_overall + uncategorized_spend_overall
+    category_coverage_ratio = round((categorized_spend_overall / denominator), 4) if denominator > 0 else 1.0
     meaningful_month = [item for item in sorted_month_categories if item[0] != "uncategorized"]
     top_month = meaningful_month[0] if meaningful_month else (sorted_month_categories[0] if sorted_month_categories else None)
     most_spent_category_current_month = (
@@ -460,6 +581,19 @@ def get_import_coverage(
         )
         for due in recurring_detected
     ]
+    category_help_candidates = [
+        CategoryHelpCandidate(
+            merchant_key=item["merchant_key"],  # type: ignore[index]
+            merchant_label=item["merchant_label"],  # type: ignore[index]
+            total_amount=round(float(item["total_amount"]), 2),  # type: ignore[index]
+            transaction_count=int(item["transaction_count"]),  # type: ignore[index]
+        )
+        for item in sorted(
+            category_help_aggregates.values(),
+            key=lambda row: float(row["total_amount"]),
+            reverse=True,
+        )[:6]
+    ]
 
     return ImportCoverageResponse(
         total_uploads=len(uploads),
@@ -473,7 +607,12 @@ def get_import_coverage(
         total_upi=round(total_upi, 2),
         total_cash_withdrawal=round(total_cash_withdrawal, 2),
         top_categories_current_month=top_month_categories,
+        top_categories_overall=top_overall_categories,
+        top_merchants_overall=top_merchants_overall,
+        category_coverage_ratio=category_coverage_ratio,
+        uncategorized_spend_overall=round(uncategorized_spend_overall, 2),
         most_spent_category_current_month=most_spent_category_current_month,
         most_spent_amount_current_month=most_spent_amount_current_month,
         recurring_dues=recurring_dues,
+        category_help_candidates=category_help_candidates,
     )

@@ -17,15 +17,21 @@ NOISE_TOKENS = {
     "txn",
     "ref",
     "to",
+    "bank",
+    "l",
+    "p",
+    "b",
+    "in",
 }
 
 
 def clean_merchant_name(counterparty: str | None, description_clean: str) -> str:
     base = (counterparty or description_clean or "").strip().lower()
     base = re.sub(r"\b\d{4,}\b", " ", base)
+    base = re.sub(r"[^a-z0-9\s]", " ", base)
     base = re.sub(r"\s+", " ", base).strip()
     tokens = [token for token in base.split() if token not in NOISE_TOKENS]
-    merchant = " ".join(tokens[:4]).strip()
+    merchant = " ".join(tokens[:6]).strip()
     for source_value, normalized in MERCHANT_ALIAS_REWRITES.items():
         if source_value in merchant:
             return normalized

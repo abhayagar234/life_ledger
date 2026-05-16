@@ -28,6 +28,7 @@ from app.models.import_file import ImportFile
 from app.models.import_row import ImportRow
 from app.models.normalized_transaction import NormalizedTransaction
 from app.schemas.imports import FileUploadResponse, ImportPreviewRow
+from app.services.category_alias import get_user_alias_lookup, match_alias_category
 
 
 @dataclass
@@ -190,6 +191,7 @@ def process_import_file(
     error_rows = 0
     error_samples: list[str] = []
     preview: list[ImportPreviewRow] = []
+    alias_lookup = get_user_alias_lookup(db, user_id)
 
     for index, raw_row in enumerate(parsed_file.rows, start=1):
         raw_description = _first_non_empty(raw_row, [mapping.get("description", "")])
@@ -243,6 +245,7 @@ def process_import_file(
             amount=normalized_amount,
             direction=direction,
             description_clean=description_clean,
+            raw_description=description_raw,
             source_name=source_name,
         )
         existing_transaction = (
@@ -273,6 +276,16 @@ def process_import_file(
             ),
             transaction_date=transaction_date,
         )
+        alias_category = match_alias_category(
+            alias_lookup,
+            counterparty_name=counterparty,
+            description_clean=description_clean,
+        )
+        if alias_category:
+            categorization.category = alias_category
+            categorization.subcategory = None
+            categorization.unresolved = False
+            categorization.confidence_score = max(categorization.confidence_score, 0.92)
 
         import_row.parse_status = "parsed"
         import_row.parse_errors = []

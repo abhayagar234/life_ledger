@@ -14,7 +14,23 @@ from app.categorization.types import CategorizationInput, CategorizationResult
 
 
 def _keywords_match(text: str, keywords: list[str]) -> bool:
-    return any(keyword.lower() in text for keyword in keywords)
+    normalized_text = " ".join((text or "").lower().split())
+    if not normalized_text:
+        return False
+    token_set = set(normalized_text.split())
+    for keyword in keywords:
+        needle = " ".join((keyword or "").lower().split())
+        if not needle:
+            continue
+        # Very short tokens (e.g., "fd", "rd") must match whole token only.
+        if len(needle) <= 2 and " " not in needle:
+            if needle in token_set:
+                return True
+            continue
+        pattern = r"\b" + r"\s+".join(re.escape(part) for part in needle.split()) + r"\b"
+        if re.search(pattern, normalized_text):
+            return True
+    return False
 
 
 def _apply_structured_rules(payload: CategorizationInput, rules: dict) -> tuple[str | None, float, bool, list[str]]:
@@ -65,9 +81,9 @@ def _apply_smart_merchant_classification(
         if category:
             traces.append(f"smart_gateway:{merchant_lower}:{category}")
             return category, confidence, False, traces
-        # If we can't determine purpose, mark as transfer (safe default)
+        # Keep unresolved for further rules/review; forcing transfers hides real spend.
         traces.append(f"smart_gateway:{merchant_lower}:unresolved")
-        return "transfers", 0.50, False, traces
+        return None, 0.0, False, traces
 
     # Step 3: Check if it's a person's name (for rent or P2P detection)
     # Heuristic: if merchant is 1-2 words, all alphabetic, and NOT a known brand component

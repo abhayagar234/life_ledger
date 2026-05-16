@@ -27,7 +27,6 @@ FIXED_OBLIGATION_CATEGORIES = CONFIRMABLE_DUE_CATEGORIES | {
 NEVER_AUTO_DUE_CATEGORIES = {
     "uncategorized",
     "transfers",
-    "savings_investments",
     "business_expense",
     "groceries",
     "health",
@@ -45,6 +44,17 @@ SUBSCRIPTION_HINTS = {
     "hotstar",
 }
 
+INVESTMENT_RECURRING_HINTS = {
+    "sip",
+    "camsip",
+    "mutual fund",
+    "hdfc mutua",
+    "hdfc mutual",
+    "icici prud",
+    "systematic investment",
+    "bpay",
+}
+
 CANONICAL_MERCHANT_HINTS: list[tuple[str, tuple[str, ...]]] = [
     ("google play", ("google play", "googleplay", "gplay", "play store", "app purchase")),
     ("netflix", ("netflix", "netflix.com", "netflix en")),
@@ -52,6 +62,8 @@ CANONICAL_MERCHANT_HINTS: list[tuple[str, tuple[str, ...]]] = [
     ("youtube", ("youtube", "youtube premium")),
     ("amazon prime", ("prime video", "amazon prime", "amzn prime")),
     ("hotstar", ("hotstar", "disney hotstar")),
+    ("hdfc mutual fund", ("hdfc mutua", "hdfc mutual", "hdcamsip", "hdmfipar")),
+    ("icici prudential", ("icici prud", "ipcamsip", "icici prudentia")),
 ]
 
 
@@ -114,8 +126,15 @@ def _next_due_after_today(last_seen: date, frequency: str) -> date:
 
 def _is_confirmable_due(txn: NormalizedTransaction) -> bool:
     category = txn.category_code or "uncategorized"
+    description = (txn.description_clean or txn.description_raw or "").lower()
+    counterparty = (txn.counterparty_name or "").lower()
+
+    if category == "savings_investments":
+        if any(hint in description or hint in counterparty for hint in INVESTMENT_RECURRING_HINTS):
+            return True
+        return False
+
     if category in NEVER_AUTO_DUE_CATEGORIES:
-        description = (txn.description_clean or txn.description_raw or "").lower()
         if any(hint in description for hint in SUBSCRIPTION_HINTS):
             return True
         return False

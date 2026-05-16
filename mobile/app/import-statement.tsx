@@ -1,25 +1,46 @@
 import { File } from "expo-file-system";
 import { router } from "expo-router";
 import { useMemo, useState } from "react";
-import { ActivityIndicator, Alert, Platform, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Alert, Platform, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { AppScreen } from "../components/AppScreen";
 import { Button } from "../components/Button";
 import { ChoiceCard } from "../components/ChoiceCard";
 import {
   confirmDetectedDues,
-  getDetectedDues,
   getImportCoverage,
   getImportSummary,
   loadSampleStatement,
+  saveCategoryMappings,
   uploadImportFile
 } from "../services/api/moneyos";
-import type { ConfirmDueItem, DetectedDueResponse, FileUploadResponse, ImportCoverageResponse, ImportSummaryResponse } from "../services/api/types";
+import type {
+  CategoryHelpCandidate,
+  CategoryMappingItem,
+  ConfirmDueItem,
+  DetectedDueResponse,
+  FileUploadResponse,
+  ImportCoverageResponse,
+  ImportSummaryResponse
+} from "../services/api/types";
 import { t } from "../i18n";
 import { useSessionStore } from "../store/session";
 import { commonStyles, theme } from "../theme";
 
 type Step = "choose" | "real_upload" | "real_insights" | "sample_load" | "sample_insights";
+
+const CATEGORY_OPTIONS: Array<{ code: string; label: string }> = [
+  { code: "groceries", label: "Groceries" },
+  { code: "health", label: "Hospital / Health" },
+  { code: "travel", label: "Travel / Fuel" },
+  { code: "bills", label: "Bills / Utilities" },
+  { code: "shopping", label: "Shopping" },
+  { code: "dining", label: "Dining / Food" },
+  { code: "subscriptions", label: "Subscriptions" },
+  { code: "education", label: "Education" },
+  { code: "transfers", label: "Transfer / Personal" },
+  { code: "uncategorized", label: "Other" }
+];
 
 function formatMoney(amount: number) {
   return `Rs ${Math.round(amount).toLocaleString("en-IN")}`;
@@ -86,6 +107,9 @@ function prettyCategory(value: string | null | undefined) {
   if (!value) {
     return null;
   }
+  if (value === "uncategorized") {
+    return "Other spends";
+  }
   return value
     .replace(/_/g, " ")
     .split(" ")
@@ -94,14 +118,22 @@ function prettyCategory(value: string | null | undefined) {
     .join(" ");
 }
 
-function topSpendCategories(topCategories: Record<string, number> | undefined, limit = 3) {
+function topSpendCategories(topCategories: Record<string, number> | undefined, limit = 5) {
   if (!topCategories) {
     return [];
   }
   return Object.entries(topCategories)
-    .filter(([category, amount]) => amount > 0 && category !== "uncategorized")
+    .filter(([, amount]) => amount > 0)
     .sort((a, b) => b[1] - a[1])
     .slice(0, limit);
+}
+
+function categoryLabel(categoryCode: string | undefined) {
+  if (!categoryCode) {
+    return "Choose category";
+  }
+  const found = CATEGORY_OPTIONS.find((item) => item.code === categoryCode);
+  return found?.label ?? prettyCategory(categoryCode) ?? "Choose category";
 }
 
 export default function ImportStatementScreen() {
@@ -126,6 +158,9 @@ export default function ImportStatementScreen() {
   const [selectedDues, setSelectedDues] = useState<Record<string, boolean>>({});
   const [customNames, setCustomNames] = useState<Record<string, string>>({});
   const [customDates, setCustomDates] = useState<Record<string, string>>({});
+  const [categorySelections, setCategorySelections] = useState<Record<string, string>>({});
+  const [openCategoryKey, setOpenCategoryKey] = useState<string | null>(null);
+  const [savingCategories, setSavingCategories] = useState(false);
 
   const selectedCount = useMemo(
     () =>
@@ -134,16 +169,10 @@ export default function ImportStatementScreen() {
       ).length,
     [detectedDues, selectedDues]
   );
-
-  const bankCount = useMemo(() => {
-    if (!importCoverage) return 0;
-    return (importCoverage.account_coverage.bank ?? 0) + (importCoverage.account_coverage.savings ?? 0);
-  }, [importCoverage]);
-
-  const cardCount = useMemo(() => {
-    if (!importCoverage) return 0;
-    return (importCoverage.account_coverage.card ?? 0) + (importCoverage.account_coverage.credit_card ?? 0);
-  }, [importCoverage]);
+  const categoryHelpCandidates = useMemo(
+    () => (importCoverage?.category_help_candidates ?? []).slice(0, 3),
+    [importCoverage?.category_help_candidates]
+  );
 
   function resetFlow(nextStep: Step = "choose") {
     setSessionUploads([]);
@@ -154,6 +183,8 @@ export default function ImportStatementScreen() {
     setSelectedDues({});
     setCustomNames({});
     setCustomDates({});
+    setCategorySelections({});
+    setOpenCategoryKey(null);
     setStep(nextStep);
   }
 
@@ -232,6 +263,8 @@ export default function ImportStatementScreen() {
       setSelectedDues(Object.fromEntries(dues.map((due) => [dueKey(due), true])));
       setCustomNames(Object.fromEntries(dues.map((due) => [dueKey(due), due.counterparty_name])));
       setCustomDates(Object.fromEntries(dues.map((due) => [dueKey(due), dueDateFromEstimate(due.next_due_estimate)])));
+      setCategorySelections({});
+      setOpenCategoryKey(null);
       await refreshDashboard();
       setStep("real_insights");
     } catch (error) {
@@ -347,25 +380,27 @@ export default function ImportStatementScreen() {
             </View>
           </View>
 
-          {topSpendCategories(importCoverage?.top_categories_current_month ?? importSummary.top_categories).length > 0 ? (
+          {topSpendCategories(importCoverage?.top_categories_overall ?? importCoverage?.top_categories_current_month ?? importSummary.top_categories).length > 0 ? (
             <View style={styles.recurringSection}>
               <Text style={styles.recurringLabel}>{t(language, "topSpendCategories")}</Text>
-              {topSpendCategories(importCoverage?.top_categories_current_month ?? importSummary.top_categories).map(([category, amount]) => (
+              {topSpendCategories(importCoverage?.top_categories_overall ?? importCoverage?.top_categories_current_month ?? importSummary.top_categories).map(([category, amount]) => (
                 <Text key={category} style={styles.recurringAmount}>
                   {prettyCategory(category) || category}: {formatMoney(amount)}
                 </Text>
               ))}
-              {(importCoverage?.top_categories_current_month?.travel ?? 0) > 0 || (importSummary.top_categories?.travel ?? 0) > 0 ? (
-                <Text style={styles.noteLine}>{t(language, "travelCalcNote")}</Text>
-              ) : null}
             </View>
           ) : null}
 
-          {importCoverage ? (
+          {importCoverage?.top_merchants_overall && Object.keys(importCoverage.top_merchants_overall).length > 0 ? (
             <View style={styles.recurringSection}>
-              <Text style={styles.recurringLabel}>{t(language, "combinedSoFar")}</Text>
-              <Text style={styles.recurringAmount}>{sessionUploads.length} statement(s) · {importCoverage.total_transactions} rows</Text>
-              <Text style={styles.recurringAmount}>Bank: {bankCount} · Card: {cardCount}</Text>
+              <Text style={styles.recurringLabel}>Top Merchants</Text>
+              {Object.entries(importCoverage.top_merchants_overall)
+                .slice(0, 5)
+                .map(([merchant, amount]) => (
+                  <Text key={merchant} style={styles.recurringAmount}>
+                    {merchant}: {formatMoney(amount)}
+                  </Text>
+                ))}
             </View>
           ) : null}
 
@@ -373,7 +408,7 @@ export default function ImportStatementScreen() {
             <View style={styles.recurringSection}>
               <Text style={styles.recurringLabel}>{t(language, "recurringDuesFound")}</Text>
               <Text style={styles.body}>Confirm the dues you want protected in safe-to-spend.</Text>
-              <ScrollView style={styles.duesList}>
+              <View style={styles.duesList}>
                 {detectedDues.map((due) => {
                   const key = dueKey(due);
                   const selected = selectedDues[key] !== false;
@@ -425,7 +460,7 @@ export default function ImportStatementScreen() {
                     </View>
                   );
                 })}
-              </ScrollView>
+              </View>
               <Button
                 label={confirming ? "Confirming..." : `Confirm Dues (${selectedCount})`}
                 disabled={confirming || selectedCount === 0 || !uploadResult}
@@ -460,6 +495,98 @@ export default function ImportStatementScreen() {
                     Alert.alert("Could not confirm dues", error instanceof Error ? error.message : "Please try again.");
                   } finally {
                     setConfirming(false);
+                  }
+                }}
+              />
+            </View>
+          ) : null}
+
+          {categoryHelpCandidates.length > 0 ? (
+            <View style={styles.recurringSection}>
+              <Text style={styles.recurringLabel}>Help us categorize bigger spends (Rs 1,000+)</Text>
+              <Text style={styles.body}>Pick category once. Next similar transactions will auto-map.</Text>
+              <View style={styles.duesList}>
+                {categoryHelpCandidates.map((candidate: CategoryHelpCandidate) => {
+                  const selectedCategory = categorySelections[candidate.merchant_key];
+                  const expanded = openCategoryKey === candidate.merchant_key;
+                  return (
+                    <View key={candidate.merchant_key} style={styles.mappingCard}>
+                      <Text style={styles.mappingTitle}>{candidate.merchant_label}</Text>
+                      <Text style={styles.mappingMeta}>
+                        {formatMoney(candidate.total_amount)} · {candidate.transaction_count} transaction
+                        {candidate.transaction_count > 1 ? "s" : ""}
+                      </Text>
+                      <Pressable
+                        onPress={() =>
+                          setOpenCategoryKey((current) => (current === candidate.merchant_key ? null : candidate.merchant_key))
+                        }
+                        style={[styles.mappingPicker, expanded ? styles.mappingPickerOpen : null]}
+                      >
+                        <Text style={styles.mappingPickerText}>{categoryLabel(selectedCategory)}</Text>
+                      </Pressable>
+                      {expanded ? (
+                        <View style={styles.chipWrap}>
+                          {CATEGORY_OPTIONS.map((option) => {
+                            const selected = selectedCategory === option.code;
+                            return (
+                              <Pressable
+                                key={`${candidate.merchant_key}:${option.code}`}
+                                onPress={() => {
+                                  setCategorySelections((current) => ({
+                                    ...current,
+                                    [candidate.merchant_key]: option.code
+                                  }));
+                                  setOpenCategoryKey(null);
+                                }}
+                                style={[styles.chip, selected ? styles.chipSelected : null]}
+                              >
+                                <Text style={[styles.chipText, selected ? styles.chipTextSelected : null]}>{option.label}</Text>
+                              </Pressable>
+                            );
+                          })}
+                        </View>
+                      ) : null}
+                    </View>
+                  );
+                })}
+              </View>
+              <Button
+                label={savingCategories ? "Saving..." : "Save category mapping"}
+                disabled={
+                  savingCategories ||
+                  categoryHelpCandidates.length === 0 ||
+                  !categoryHelpCandidates.some((candidate) => Boolean(categorySelections[candidate.merchant_key]))
+                }
+                onPress={async () => {
+                  if (!userId) {
+                    return;
+                  }
+                  const mappings: CategoryMappingItem[] = categoryHelpCandidates
+                    .filter((candidate) => Boolean(categorySelections[candidate.merchant_key]))
+                    .map((candidate) => ({
+                      merchant_key: candidate.merchant_key,
+                      merchant_label: candidate.merchant_label,
+                      category_code: categorySelections[candidate.merchant_key]
+                    }));
+                  if (mappings.length === 0) {
+                    return;
+                  }
+                  try {
+                    setSavingCategories(true);
+                    await saveCategoryMappings(userId, mappings);
+                    const refreshed = await getImportCoverage(
+                      userId,
+                      sessionUploads.map((item) => item.upload_id)
+                    );
+                    setImportCoverage(refreshed);
+                    setCategorySelections({});
+                    setOpenCategoryKey(null);
+                    await refreshDashboard();
+                    Alert.alert("Saved", "Thanks. We will auto-map these next time.");
+                  } catch (error) {
+                    Alert.alert("Could not save", error instanceof Error ? error.message : "Please try again.");
+                  } finally {
+                    setSavingCategories(false);
                   }
                 }}
               />
@@ -516,7 +643,7 @@ const styles = StyleSheet.create({
     color: theme.colors.textMuted
   },
   duesList: {
-    maxHeight: 360
+    gap: theme.spacing.sm
   },
   dueWrap: {
     gap: theme.spacing.sm,
@@ -583,9 +710,62 @@ const styles = StyleSheet.create({
     color: theme.colors.text,
     marginBottom: 2
   },
-  noteLine: {
-    marginTop: 6,
+  mappingCard: {
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    borderRadius: theme.radius.md,
+    padding: theme.spacing.sm,
+    gap: theme.spacing.xs,
+    backgroundColor: theme.colors.surface
+  },
+  mappingTitle: {
+    fontSize: theme.typography.body,
+    fontWeight: "600",
+    color: theme.colors.text
+  },
+  mappingMeta: {
     fontSize: theme.typography.caption,
     color: theme.colors.textMuted
+  },
+  mappingPicker: {
+    minHeight: 42,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    borderRadius: theme.radius.md,
+    justifyContent: "center",
+    paddingHorizontal: theme.spacing.md,
+    backgroundColor: theme.colors.surfaceMuted
+  },
+  mappingPickerOpen: {
+    borderColor: theme.colors.primary
+  },
+  mappingPickerText: {
+    fontSize: theme.typography.caption,
+    color: theme.colors.text
+  },
+  chipWrap: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginTop: 2
+  },
+  chip: {
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    borderRadius: 999,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    backgroundColor: theme.colors.surfaceMuted
+  },
+  chipSelected: {
+    backgroundColor: theme.colors.primary,
+    borderColor: theme.colors.primary
+  },
+  chipText: {
+    fontSize: 12,
+    color: theme.colors.text
+  },
+  chipTextSelected: {
+    color: theme.colors.white
   }
 });

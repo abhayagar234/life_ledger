@@ -66,3 +66,55 @@ def test_categorization_engine_marks_emi_as_fixed_obligation() -> None:
 
     assert result.category == "emi_loans"
     assert result.is_fixed_obligation is True
+
+
+def test_categorization_engine_maps_upi_hospital_to_health() -> None:
+    db = _make_db()
+    user = User(display_name="Category Test User 3")
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+
+    result = categorize_transaction(
+        db,
+        payload=CategorizationInput(
+            user_id=user.id,
+            description_raw="UPI/Manipal Ho/63280127563.pa/UPI/INDUSIND B/607146936191/AXI...",
+            description_clean="upi manipal ho upi indusind b axi",
+            counterparty="manipal ho",
+            direction="debit",
+            amount=1400.00,
+            source_type="bank",
+            source_name="sbi_bank_like",
+        ),
+        transaction_date=date(2026, 3, 12),
+    )
+
+    assert result.category == "health"
+    assert result.confidence_score >= 0.8
+
+
+def test_categorization_engine_maps_google_play_to_subscriptions() -> None:
+    db = _make_db()
+    user = User(display_name="Category Test User 4")
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+
+    result = categorize_transaction(
+        db,
+        payload=CategorizationInput(
+            user_id=user.id,
+            description_raw="GOOGLE PLAY APP PURCHA MUMBAI IN",
+            description_clean="google play app purcha mumbai in",
+            counterparty="google play app purcha",
+            direction="debit",
+            amount=199.00,
+            source_type="card",
+            source_name="generic_card_like",
+        ),
+        transaction_date=date(2026, 3, 11),
+    )
+
+    assert result.category == "subscriptions"
+    assert result.confidence_score >= 0.8

@@ -9,6 +9,7 @@ from app.models import (  # noqa: F401
     loan,
     monthly_summary,
     normalized_transaction,
+    user_category_alias,
     user,
 )
 from app.models.base import Base

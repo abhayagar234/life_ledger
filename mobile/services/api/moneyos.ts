@@ -10,6 +10,8 @@ import type {
   FileUploadResponse,
   ImportSummaryResponse,
   ImportCoverageResponse,
+  CategoryMappingItem,
+  CategoryMappingResponse,
   InsightCard,
   LedgerEntryCreate,
   LedgerEntryRead,
@@ -182,6 +184,14 @@ export function getImportCoverage(userId: string, uploadIds?: string[]) {
   const query = uploadIds && uploadIds.length > 0 ? `?upload_ids=${encodeURIComponent(uploadIds.join(","))}` : "";
   return apiRequest<ImportCoverageResponse>(`/imports/coverage${query}`, {
     userId
+  });
+}
+
+export function saveCategoryMappings(userId: string, mappings: CategoryMappingItem[]) {
+  return apiRequest<CategoryMappingResponse>("/imports/category-mappings", {
+    method: "POST",
+    userId,
+    body: JSON.stringify({ mappings })
   });
 }
 
