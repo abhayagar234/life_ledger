@@ -47,6 +47,7 @@ class ConfirmDueItem(BaseModel):
     frequency: str
     next_due_date: date
     custom_name: str | None = None
+    category_code: str | None = None
 
 
 class ConfirmDuesRequest(BaseModel):

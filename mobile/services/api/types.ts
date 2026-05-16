@@ -251,6 +251,7 @@ export type ConfirmDueItem = {
   frequency: string;
   next_due_date: string;
   custom_name?: string | null;
+  category_code?: string | null;
 };
 
 export type ConfirmDuesResponse = {

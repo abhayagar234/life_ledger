@@ -36,8 +36,14 @@ def _extract_summary_balance(text: str) -> str | None:
 
 def _looks_like_date(cell: object) -> bool:
     text = str(cell).strip() if cell else ""
+    if not text:
+        return False
+    normalized = " ".join(text.replace("\n", " ").split())
     import re
-    return bool(re.match(r'^\d{1,2}[/-]\d{1,2}[/-]\d{2,4}', text))
+    return bool(
+        re.match(r"^\d{1,2}[/-]\d{1,2}[/-]\d{2,4}", normalized)
+        or re.match(r"^\d{1,2}\s+[A-Za-z]{3,9}\s+\d{2,4}$", normalized)
+    )
 
 
 def _looks_like_amount(cell: object) -> bool:

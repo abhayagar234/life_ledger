@@ -166,6 +166,10 @@ function currentPeriod() {
   };
 }
 
+let dashboardRefreshInFlight: Promise<void> | null = null;
+let lastDashboardRefreshAt = 0;
+const DASHBOARD_REFRESH_DEBOUNCE_MS = 1500;
+
 export const useSessionStore = create<SessionStore>()(
   persist(
     (set, get) => ({
@@ -304,36 +308,56 @@ export const useSessionStore = create<SessionStore>()(
         if (!userId) {
           return;
         }
-        try {
-          const { year, month } = currentPeriod();
-          const cashflowSummary = await getCashflowSummary(userId);
-          const [monthlySummaryResult, spendingSummaryResult, insightCardsResult, ledgerEntriesResult] = await Promise.allSettled([
-            getMonthlySummary(userId, year, month),
-            getSpendingSummary(userId, year, month),
-            listInsights(userId, year, month),
-            listLedgerEntries(userId)
-          ]);
-
-          const optionalErrors = [monthlySummaryResult, spendingSummaryResult, insightCardsResult, ledgerEntriesResult].filter(
-            (result): result is PromiseRejectedResult => result.status === "rejected"
-          );
-
-          set({
-            dashboard: {
-              monthlySummary: monthlySummaryResult.status === "fulfilled" ? monthlySummaryResult.value : null,
-              spendingSummary: spendingSummaryResult.status === "fulfilled" ? spendingSummaryResult.value : null,
-              insightCards: insightCardsResult.status === "fulfilled" ? insightCardsResult.value : [],
-              cashflowSummary,
-              recentLedgerEntries:
-                ledgerEntriesResult.status === "fulfilled" ? ledgerEntriesResult.value.slice(0, 5) : []
-            },
-            error: optionalErrors.length
-              ? "Some secondary insights could not refresh, but your main cashflow answer is up to date."
-              : null
-          });
-        } catch (error) {
-          set({ error: error instanceof Error ? error.message : "Could not load the dashboard." });
+        const now = Date.now();
+        if (dashboardRefreshInFlight) {
+          return dashboardRefreshInFlight;
         }
+        if (now - lastDashboardRefreshAt < DASHBOARD_REFRESH_DEBOUNCE_MS && get().dashboard.cashflowSummary) {
+          return;
+        }
+
+        dashboardRefreshInFlight = (async () => {
+          try {
+            const { year, month } = currentPeriod();
+            const secondaryResultsPromise = Promise.allSettled([
+              getMonthlySummary(userId, year, month),
+              getSpendingSummary(userId, year, month),
+              listInsights(userId, year, month),
+              listLedgerEntries(userId, 5)
+            ]);
+
+            const [cashflowSummary, secondaryResults] = await Promise.all([
+              getCashflowSummary(userId),
+              secondaryResultsPromise
+            ]);
+            const [monthlySummaryResult, spendingSummaryResult, insightCardsResult, ledgerEntriesResult] =
+              secondaryResults;
+
+            const optionalErrors = [monthlySummaryResult, spendingSummaryResult, insightCardsResult, ledgerEntriesResult].filter(
+              (result): result is PromiseRejectedResult => result.status === "rejected"
+            );
+
+            set({
+              dashboard: {
+                monthlySummary: monthlySummaryResult.status === "fulfilled" ? monthlySummaryResult.value : null,
+                spendingSummary: spendingSummaryResult.status === "fulfilled" ? spendingSummaryResult.value : null,
+                insightCards: insightCardsResult.status === "fulfilled" ? insightCardsResult.value : [],
+                cashflowSummary,
+                recentLedgerEntries: ledgerEntriesResult.status === "fulfilled" ? ledgerEntriesResult.value : []
+              },
+              error: optionalErrors.length
+                ? "Some secondary insights could not refresh, but your main cashflow answer is up to date."
+                : null
+            });
+          } catch (error) {
+            set({ error: error instanceof Error ? error.message : "Could not load the dashboard." });
+          } finally {
+            lastDashboardRefreshAt = Date.now();
+            dashboardRefreshInFlight = null;
+          }
+        })();
+
+        return dashboardRefreshInFlight;
       },
       saveOnboarding: async () => {
         const { userId, onboardingDraft } = get();

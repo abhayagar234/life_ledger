@@ -23,14 +23,25 @@ DEFAULT_RULES: dict = {
 def _resolve_rules_path() -> Path:
     current = Path(__file__).resolve()
     candidates = [
-        current.parents[3] / "docs" / "categorization_rules.yaml",   # monorepo root layout
-        current.parents[2] / "docs" / "categorization_rules.yaml",   # backend as deploy root
-        current.parents[2] / "app" / "docs" / "categorization_rules.yaml",  # nested app dir
-        Path.cwd() / "docs" / "categorization_rules.yaml",           # runtime cwd fallback
+        current.parents[2] / "docs" / "categorization_rules.yaml",  # backend/docs
+        current.parents[3]
+        / "backend"
+        / "docs"
+        / "categorization_rules.yaml",  # repo/backend/docs
+        current.parents[2] / "app" / "docs" / "categorization_rules.yaml",
+        Path.cwd() / "backend" / "docs" / "categorization_rules.yaml",
+        Path.cwd() / "docs" / "categorization_rules.yaml",
     ]
+
     for candidate in candidates:
         if candidate.exists():
+            logger.info("Using categorization rules from: %s", candidate)
             return candidate
+
+    logger.warning(
+        "categorization_rules.yaml not found. Checked paths: %s",
+        [str(path) for path in candidates],
+    )
     return candidates[0]
 
 
@@ -62,7 +73,9 @@ def load_categorization_rules() -> dict:
         )
         return DEFAULT_RULES.copy()
     if not isinstance(data, dict):
-        logger.warning("categorization_rules.yaml is not a dict. Falling back to defaults.")
+        logger.warning(
+            "categorization_rules.yaml is not a dict. Falling back to defaults."
+        )
         return DEFAULT_RULES.copy()
     merged = DEFAULT_RULES.copy()
     merged.update(data)

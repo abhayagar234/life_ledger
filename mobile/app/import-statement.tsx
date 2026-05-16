@@ -1,6 +1,6 @@
 import { File } from "expo-file-system";
 import { router } from "expo-router";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, Alert, Platform, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { AppScreen } from "../components/AppScreen";
@@ -8,6 +8,7 @@ import { Button } from "../components/Button";
 import { ChoiceCard } from "../components/ChoiceCard";
 import {
   confirmDetectedDues,
+  confirmPatternDue,
   getImportCoverage,
   getImportSummary,
   loadSampleStatement,
@@ -27,13 +28,17 @@ import { t } from "../i18n";
 import { useSessionStore } from "../store/session";
 import { commonStyles, theme } from "../theme";
 
-type Step = "choose" | "real_upload" | "real_insights" | "sample_load" | "sample_insights";
+type Step = "choose" | "real_upload" | "real_insights" | "sample_insights";
 
 const CATEGORY_OPTIONS: Array<{ code: string; label: string }> = [
   { code: "groceries", label: "Groceries" },
   { code: "health", label: "Hospital / Health" },
   { code: "travel", label: "Travel / Fuel" },
   { code: "bills", label: "Bills / Utilities" },
+  { code: "emi_loans", label: "Loan / EMI" },
+  { code: "rent", label: "Rent" },
+  { code: "insurance", label: "Insurance" },
+  { code: "savings_investments", label: "Investment / SIP" },
   { code: "shopping", label: "Shopping" },
   { code: "dining", label: "Dining / Food" },
   { code: "subscriptions", label: "Subscriptions" },
@@ -144,6 +149,7 @@ export default function ImportStatementScreen() {
   const markHasRealData = useSessionStore((state) => state.markHasRealData);
   const markSampleData = useSessionStore((state) => state.markSampleData);
   const cashflowSummary = useSessionStore((state) => state.dashboard.cashflowSummary);
+  const spendingSummary = useSessionStore((state) => state.dashboard.spendingSummary);
 
   const [step, setStep] = useState<Step>("choose");
   const [uploading, setUploading] = useState(false);
@@ -156,23 +162,102 @@ export default function ImportStatementScreen() {
   const [importCoverage, setImportCoverage] = useState<ImportCoverageResponse | null>(null);
   const [detectedDues, setDetectedDues] = useState<DetectedDueResponse[]>([]);
   const [selectedDues, setSelectedDues] = useState<Record<string, boolean>>({});
-  const [customNames, setCustomNames] = useState<Record<string, string>>({});
-  const [customDates, setCustomDates] = useState<Record<string, string>>({});
+  const [dueCustomNames, setDueCustomNames] = useState<Record<string, string>>({});
+  const [dueAmounts, setDueAmounts] = useState<Record<string, string>>({});
+  const [dueCategorySelections, setDueCategorySelections] = useState<Record<string, string>>({});
+  const [openDueCategoryKey, setOpenDueCategoryKey] = useState<string | null>(null);
   const [categorySelections, setCategorySelections] = useState<Record<string, string>>({});
   const [openCategoryKey, setOpenCategoryKey] = useState<string | null>(null);
   const [savingCategories, setSavingCategories] = useState(false);
+  const [showCategoryHelp, setShowCategoryHelp] = useState(false);
+  const [confirmingSampleDues, setConfirmingSampleDues] = useState(false);
+  const [selectedSampleDueKeys, setSelectedSampleDueKeys] = useState<Record<string, boolean>>({});
+  const [hiddenSampleDueKeys, setHiddenSampleDueKeys] = useState<Record<string, boolean>>({});
+  const lastImportAlertRef = useRef<{ key: string; at: number } | null>(null);
 
+  const confirmableDetectedDues = useMemo(
+    () => detectedDues.filter((due) => due.frequency === "weekly" || due.frequency === "monthly"),
+    [detectedDues]
+  );
   const selectedCount = useMemo(
     () =>
-      detectedDues.filter(
-        (due) => selectedDues[dueKey(due)] !== false && (due.frequency === "weekly" || due.frequency === "monthly")
-      ).length,
-    [detectedDues, selectedDues]
+      confirmableDetectedDues.filter((due) => selectedDues[dueKey(due)] !== false).length,
+    [confirmableDetectedDues, selectedDues]
   );
   const categoryHelpCandidates = useMemo(
     () => (importCoverage?.category_help_candidates ?? []).slice(0, 3),
     [importCoverage?.category_help_candidates]
   );
+  const samplePendingDues = useMemo(
+    () =>
+      (cashflowSummary?.pending_pattern_dues ?? [])
+        .filter((item) => !hiddenSampleDueKeys[item.due_key])
+        .filter((item) => item.status !== "paid" && item.remaining_amount > 0)
+        .sort((a, b) => b.remaining_amount - a.remaining_amount)
+        .slice(0, 4),
+    [cashflowSummary?.pending_pattern_dues, hiddenSampleDueKeys]
+  );
+  const selectedSampleCount = useMemo(
+    () => samplePendingDues.filter((item) => selectedSampleDueKeys[item.due_key] !== false).length,
+    [samplePendingDues, selectedSampleDueKeys]
+  );
+
+  useEffect(() => {
+    if (step !== "sample_insights") {
+      return;
+    }
+    if (!samplePendingDues.length) {
+      setSelectedSampleDueKeys({});
+      return;
+    }
+    setSelectedSampleDueKeys((current) => {
+      const next: Record<string, boolean> = {};
+      for (const due of samplePendingDues) {
+        next[due.due_key] = current[due.due_key] ?? true;
+      }
+      return next;
+    });
+  }, [samplePendingDues, step]);
+
+  useEffect(() => {
+    if (!confirmableDetectedDues.length) {
+      setDueCustomNames({});
+      setDueAmounts({});
+      setDueCategorySelections({});
+      setOpenDueCategoryKey(null);
+      return;
+    }
+    setDueCustomNames((current) => {
+      const next = { ...current };
+      for (const due of confirmableDetectedDues) {
+        const key = dueKey(due);
+        if (!next[key]) {
+          next[key] = due.counterparty_name;
+        }
+      }
+      return next;
+    });
+    setDueAmounts((current) => {
+      const next = { ...current };
+      for (const due of confirmableDetectedDues) {
+        const key = dueKey(due);
+        if (!next[key]) {
+          next[key] = String(Math.round(due.amount));
+        }
+      }
+      return next;
+    });
+    setDueCategorySelections((current) => {
+      const next = { ...current };
+      for (const due of confirmableDetectedDues) {
+        const key = dueKey(due);
+        if (!next[key] && due.category_code) {
+          next[key] = due.category_code;
+        }
+      }
+      return next;
+    });
+  }, [confirmableDetectedDues]);
 
   function resetFlow(nextStep: Step = "choose") {
     setSessionUploads([]);
@@ -181,11 +266,27 @@ export default function ImportStatementScreen() {
     setImportCoverage(null);
     setDetectedDues([]);
     setSelectedDues({});
-    setCustomNames({});
-    setCustomDates({});
+    setDueCustomNames({});
+    setDueAmounts({});
+    setDueCategorySelections({});
+    setOpenDueCategoryKey(null);
     setCategorySelections({});
     setOpenCategoryKey(null);
+    setShowCategoryHelp(false);
+    setSelectedSampleDueKeys({});
+    setHiddenSampleDueKeys({});
     setStep(nextStep);
+  }
+
+  function showImportAlertOnce(title: string, message: string) {
+    const now = Date.now();
+    const key = `${title}:${message}`;
+    const last = lastImportAlertRef.current;
+    if (last && last.key === key && now - last.at < 1500) {
+      return;
+    }
+    lastImportAlertRef.current = { key, at: now };
+    Alert.alert(title, message);
   }
 
   if (!profile) {
@@ -198,7 +299,7 @@ export default function ImportStatementScreen() {
 
   async function uploadOneStatement(sourceHint: "bank" | "card" | "other") {
     if (!userId) {
-      Alert.alert("Missing session", "Please reload the app once.");
+      showImportAlertOnce("Missing session", "Please reload the app once.");
       return;
     }
     try {
@@ -233,11 +334,24 @@ export default function ImportStatementScreen() {
 
       const result = await uploadImportFile(userId, { uri, name: pickedName, mimeType }, sourceHint);
       setUploadResult(result);
-      setSessionUploads((current) => [...current, result]);
-      markHasRealData();
-      Alert.alert("Uploaded", `${result.imported_rows} rows imported.`);
+
+      const isProcessed = result.status === "processed";
+      const hasAnyRows = result.imported_rows > 0 || result.duplicate_rows > 0;
+      if (isProcessed && hasAnyRows) {
+        setSessionUploads((current) => [...current, result]);
+        markHasRealData();
+        if (result.imported_rows > 0) {
+          showImportAlertOnce("Uploaded", `${result.imported_rows} rows imported.`);
+        } else {
+          showImportAlertOnce("No new rows", `${result.duplicate_rows} rows were already imported earlier.`);
+        }
+      } else {
+        const detail = result.message || "We could not read this statement.";
+        const samples = result.error_samples?.length ? `\n\n${result.error_samples.slice(0, 2).join("\n")}` : "";
+        showImportAlertOnce("Import failed", `${detail}${samples}`);
+      }
     } catch (error) {
-      Alert.alert("Import failed", error instanceof Error ? error.message : "Please try again.");
+      showImportAlertOnce("Import failed", error instanceof Error ? error.message : "Please try again.");
     } finally {
       setUploading(false);
       setUploadingSource(null);
@@ -261,10 +375,19 @@ export default function ImportStatementScreen() {
       setImportCoverage(coverage);
       setDetectedDues(dues);
       setSelectedDues(Object.fromEntries(dues.map((due) => [dueKey(due), true])));
-      setCustomNames(Object.fromEntries(dues.map((due) => [dueKey(due), due.counterparty_name])));
-      setCustomDates(Object.fromEntries(dues.map((due) => [dueKey(due), dueDateFromEstimate(due.next_due_estimate)])));
+      setDueCustomNames(Object.fromEntries(dues.map((due) => [dueKey(due), due.counterparty_name])));
+      setDueAmounts(Object.fromEntries(dues.map((due) => [dueKey(due), String(Math.round(due.amount))])));
+      setDueCategorySelections(
+        Object.fromEntries(
+          dues
+            .filter((due) => Boolean(due.category_code))
+            .map((due) => [dueKey(due), due.category_code])
+        )
+      );
+      setOpenDueCategoryKey(null);
       setCategorySelections({});
       setOpenCategoryKey(null);
+      setShowCategoryHelp(false);
       await refreshDashboard();
       setStep("real_insights");
     } catch (error) {
@@ -310,7 +433,9 @@ export default function ImportStatementScreen() {
             subtitle={t(language, "sampleBody")}
             icon="flask-outline"
             selected={false}
-            onPress={() => resetFlow("sample_load")}
+            onPress={() => {
+              void loadSample();
+            }}
           />
         </View>
       ) : null}
@@ -381,7 +506,7 @@ export default function ImportStatementScreen() {
           </View>
 
           {topSpendCategories(importCoverage?.top_categories_overall ?? importCoverage?.top_categories_current_month ?? importSummary.top_categories).length > 0 ? (
-            <View style={styles.recurringSection}>
+            <View style={styles.summarySection}>
               <Text style={styles.recurringLabel}>{t(language, "topSpendCategories")}</Text>
               {topSpendCategories(importCoverage?.top_categories_overall ?? importCoverage?.top_categories_current_month ?? importSummary.top_categories).map(([category, amount]) => (
                 <Text key={category} style={styles.recurringAmount}>
@@ -392,7 +517,7 @@ export default function ImportStatementScreen() {
           ) : null}
 
           {importCoverage?.top_merchants_overall && Object.keys(importCoverage.top_merchants_overall).length > 0 ? (
-            <View style={styles.recurringSection}>
+            <View style={styles.summarySection}>
               <Text style={styles.recurringLabel}>Top Merchants</Text>
               {Object.entries(importCoverage.top_merchants_overall)
                 .slice(0, 5)
@@ -404,58 +529,95 @@ export default function ImportStatementScreen() {
             </View>
           ) : null}
 
-          {detectedDues.length > 0 ? (
-            <View style={styles.recurringSection}>
-              <Text style={styles.recurringLabel}>{t(language, "recurringDuesFound")}</Text>
-              <Text style={styles.body}>Confirm the dues you want protected in safe-to-spend.</Text>
+          {confirmableDetectedDues.length > 0 ? (
+            <View style={styles.editorSection}>
+              <Text style={styles.editorTitle}>Fix & Confirm Recurring Dues</Text>
+              <Text style={styles.body}>Edit name, amount, and category. Confirm only the dues to protect.</Text>
               <View style={styles.duesList}>
-                {detectedDues.map((due) => {
+                {confirmableDetectedDues.map((due) => {
                   const key = dueKey(due);
                   const selected = selectedDues[key] !== false;
-                  const confirmable = due.frequency === "weekly" || due.frequency === "monthly";
+                  const selectedCategory = dueCategorySelections[key] || due.category_code;
+                  const expandedCategory = openDueCategoryKey === key;
+                  const editedAmountText = dueAmounts[key] ?? String(Math.round(due.amount));
                   return (
-                    <View key={key} style={styles.dueWrap}>
-                      <ChoiceCard
-                        title={`${due.counterparty_name} · ${formatMoney(due.amount)}`}
-                        subtitle={`${due.frequency}${confirmable ? "" : " · review only"}`}
-                        icon="repeat-outline"
-                        selected={selected && confirmable}
-                        onPress={() =>
-                          confirmable
-                            ? setSelectedDues((current) => ({
-                                ...current,
-                                [key]: !selected
-                              }))
-                            : undefined
+                    <View key={key} style={styles.mappingCard}>
+                      <View style={styles.dueHeaderRow}>
+                        <Text style={styles.dueHeaderTitle}>{`Due ${dueDateFromEstimate(due.next_due_estimate)} · ${due.frequency}`}</Text>
+                        <Pressable
+                          onPress={() =>
+                            setSelectedDues((current) => ({
+                              ...current,
+                              [key]: !selected
+                            }))
+                          }
+                          style={[styles.includeChip, selected ? styles.includeChipOn : styles.includeChipOff]}
+                        >
+                          <Text style={[styles.includeChipText, selected ? styles.includeChipTextOn : styles.includeChipTextOff]}>
+                            {selected ? "Included" : "Skipped"}
+                          </Text>
+                        </Pressable>
+                      </View>
+                      <View style={styles.dueIdentityRow}>
+                        <Text style={styles.dueIdentityText} numberOfLines={1} ellipsizeMode="tail">
+                          {due.counterparty_name}
+                        </Text>
+                        <Text style={styles.dueIdentityAmount}>{formatMoney(due.amount)}</Text>
+                      </View>
+                      <TextInput
+                        value={dueCustomNames[key] ?? due.counterparty_name}
+                        onChangeText={(value) =>
+                          setDueCustomNames((current) => ({
+                            ...current,
+                            [key]: value
+                          }))
                         }
+                        placeholder="Edit due name (shown on Home)"
+                        placeholderTextColor={theme.colors.textMuted}
+                        style={styles.dueEditInput}
                       />
-                      {selected && confirmable ? (
-                        <>
-                          <TextInput
-                            value={customNames[key] ?? due.counterparty_name}
-                            onChangeText={(value) =>
-                              setCustomNames((current) => ({
-                                ...current,
-                                [key]: value
-                              }))
-                            }
-                            placeholder="Rename if needed"
-                            placeholderTextColor={theme.colors.textMuted}
-                            style={styles.input}
-                          />
-                          <TextInput
-                            value={customDates[key] ?? dueDateFromEstimate(due.next_due_estimate)}
-                            onChangeText={(value) =>
-                              setCustomDates((current) => ({
-                                ...current,
-                                [key]: value
-                              }))
-                            }
-                            placeholder="Due date YYYY-MM-DD"
-                            placeholderTextColor={theme.colors.textMuted}
-                            style={styles.input}
-                          />
-                        </>
+                      <TextInput
+                        keyboardType="numeric"
+                        value={editedAmountText}
+                        onChangeText={(value) =>
+                          setDueAmounts((current) => ({
+                            ...current,
+                            [key]: value.replace(/[^\d.]/g, "")
+                          }))
+                        }
+                        placeholder="Amount (e.g. 9330)"
+                        placeholderTextColor={theme.colors.textMuted}
+                        style={styles.dueAmountInput}
+                      />
+                      <Pressable
+                        onPress={() =>
+                          setOpenDueCategoryKey((current) => (current === key ? null : key))
+                        }
+                        style={[styles.mappingPicker, expandedCategory ? styles.mappingPickerOpen : null]}
+                      >
+                        <Text style={styles.mappingPickerText}>{categoryLabel(selectedCategory)}</Text>
+                      </Pressable>
+                      {expandedCategory ? (
+                        <View style={styles.chipWrap}>
+                          {CATEGORY_OPTIONS.map((option) => {
+                            const catSelected = selectedCategory === option.code;
+                            return (
+                              <Pressable
+                                key={`${key}:${option.code}`}
+                                onPress={() => {
+                                  setDueCategorySelections((current) => ({
+                                    ...current,
+                                    [key]: option.code
+                                  }));
+                                  setOpenDueCategoryKey(null);
+                                }}
+                                style={[styles.chip, catSelected ? styles.chipSelected : null]}
+                              >
+                                <Text style={[styles.chipText, catSelected ? styles.chipTextSelected : null]}>{option.label}</Text>
+                              </Pressable>
+                            );
+                          })}
+                        </View>
                       ) : null}
                     </View>
                   );
@@ -468,28 +630,31 @@ export default function ImportStatementScreen() {
                   if (!userId || !uploadResult) {
                     return;
                   }
-                  const confirmed: ConfirmDueItem[] = detectedDues
-                    .filter((due) => selectedDues[dueKey(due)] !== false && (due.frequency === "weekly" || due.frequency === "monthly"))
-                    .map((due) => ({
-                      counterparty_name: due.counterparty_name,
-                      amount: due.amount,
-                      frequency: due.frequency,
-                      next_due_date: customDates[dueKey(due)] || dueDateFromEstimate(due.next_due_estimate),
-                      custom_name: customNames[dueKey(due)] || due.counterparty_name
-                    }));
+                  const confirmed: ConfirmDueItem[] = confirmableDetectedDues
+                    .filter((due) => selectedDues[dueKey(due)] !== false)
+                    .map((due) => {
+                      const key = dueKey(due);
+                      const parsedAmount = Number(dueAmounts[key]);
+                      return {
+                        counterparty_name: due.counterparty_name,
+                        amount: Number.isFinite(parsedAmount) && parsedAmount > 0 ? parsedAmount : due.amount,
+                        frequency: due.frequency,
+                        next_due_date: dueDateFromEstimate(due.next_due_estimate),
+                        custom_name: (dueCustomNames[key] ?? due.counterparty_name).trim() || due.counterparty_name,
+                        category_code: dueCategorySelections[key] ?? due.category_code ?? null
+                      };
+                    });
                   try {
                     setConfirming(true);
                     await confirmDetectedDues(userId, uploadResult.upload_id, confirmed);
                     await refreshDashboard();
                     const confirmedKeys = new Set(
-                      detectedDues
-                        .filter((due) => selectedDues[dueKey(due)] !== false && (due.frequency === "weekly" || due.frequency === "monthly"))
+                      confirmableDetectedDues
+                        .filter((due) => selectedDues[dueKey(due)] !== false)
                         .map((due) => dueKey(due))
                     );
                     setDetectedDues((current) => current.filter((due) => !confirmedKeys.has(dueKey(due))));
                     setSelectedDues({});
-                    setCustomNames({});
-                    setCustomDates({});
                     Alert.alert("Done", "Recurring dues confirmed.");
                   } catch (error) {
                     Alert.alert("Could not confirm dues", error instanceof Error ? error.message : "Please try again.");
@@ -502,94 +667,108 @@ export default function ImportStatementScreen() {
           ) : null}
 
           {categoryHelpCandidates.length > 0 ? (
-            <View style={styles.recurringSection}>
-              <Text style={styles.recurringLabel}>Help us categorize bigger spends (Rs 1,000+)</Text>
-              <Text style={styles.body}>Pick category once. Next similar transactions will auto-map.</Text>
-              <View style={styles.duesList}>
-                {categoryHelpCandidates.map((candidate: CategoryHelpCandidate) => {
-                  const selectedCategory = categorySelections[candidate.merchant_key];
-                  const expanded = openCategoryKey === candidate.merchant_key;
-                  return (
-                    <View key={candidate.merchant_key} style={styles.mappingCard}>
-                      <Text style={styles.mappingTitle}>{candidate.merchant_label}</Text>
-                      <Text style={styles.mappingMeta}>
-                        {formatMoney(candidate.total_amount)} · {candidate.transaction_count} transaction
-                        {candidate.transaction_count > 1 ? "s" : ""}
-                      </Text>
-                      <Pressable
-                        onPress={() =>
-                          setOpenCategoryKey((current) => (current === candidate.merchant_key ? null : candidate.merchant_key))
-                        }
-                        style={[styles.mappingPicker, expanded ? styles.mappingPickerOpen : null]}
-                      >
-                        <Text style={styles.mappingPickerText}>{categoryLabel(selectedCategory)}</Text>
-                      </Pressable>
-                      {expanded ? (
-                        <View style={styles.chipWrap}>
-                          {CATEGORY_OPTIONS.map((option) => {
-                            const selected = selectedCategory === option.code;
-                            return (
-                              <Pressable
-                                key={`${candidate.merchant_key}:${option.code}`}
-                                onPress={() => {
-                                  setCategorySelections((current) => ({
-                                    ...current,
-                                    [candidate.merchant_key]: option.code
-                                  }));
-                                  setOpenCategoryKey(null);
-                                }}
-                                style={[styles.chip, selected ? styles.chipSelected : null]}
-                              >
-                                <Text style={[styles.chipText, selected ? styles.chipTextSelected : null]}>{option.label}</Text>
-                              </Pressable>
-                            );
-                          })}
+            <View style={styles.summarySection}>
+              <Pressable
+                onPress={() => setShowCategoryHelp((value) => !value)}
+                style={[styles.mappingPicker, showCategoryHelp ? styles.mappingPickerOpen : null]}
+              >
+                <Text style={styles.mappingPickerText}>
+                  {showCategoryHelp
+                    ? "Hide category help"
+                    : `Help categorize bigger spends (${categoryHelpCandidates.length})`}
+                </Text>
+              </Pressable>
+              {showCategoryHelp ? (
+                <>
+                  <Text style={styles.body}>Pick category once. Next similar transactions will auto-map.</Text>
+                  <View style={styles.duesList}>
+                    {categoryHelpCandidates.map((candidate: CategoryHelpCandidate) => {
+                      const selectedCategory = categorySelections[candidate.merchant_key];
+                      const expanded = openCategoryKey === candidate.merchant_key;
+                      return (
+                        <View key={candidate.merchant_key} style={styles.mappingCard}>
+                          <Text style={styles.mappingTitle}>{candidate.merchant_label}</Text>
+                          <Text style={styles.mappingMeta}>
+                            {formatMoney(candidate.total_amount)} · {candidate.transaction_count} transaction
+                            {candidate.transaction_count > 1 ? "s" : ""}
+                          </Text>
+                          <Pressable
+                            onPress={() =>
+                              setOpenCategoryKey((current) => (current === candidate.merchant_key ? null : candidate.merchant_key))
+                            }
+                            style={[styles.mappingPicker, expanded ? styles.mappingPickerOpen : null]}
+                          >
+                            <Text style={styles.mappingPickerText}>{categoryLabel(selectedCategory)}</Text>
+                          </Pressable>
+                          {expanded ? (
+                            <View style={styles.chipWrap}>
+                              {CATEGORY_OPTIONS.map((option) => {
+                                const selected = selectedCategory === option.code;
+                                return (
+                                  <Pressable
+                                    key={`${candidate.merchant_key}:${option.code}`}
+                                    onPress={() => {
+                                      setCategorySelections((current) => ({
+                                        ...current,
+                                        [candidate.merchant_key]: option.code
+                                      }));
+                                      setOpenCategoryKey(null);
+                                    }}
+                                    style={[styles.chip, selected ? styles.chipSelected : null]}
+                                  >
+                                    <Text style={[styles.chipText, selected ? styles.chipTextSelected : null]}>{option.label}</Text>
+                                  </Pressable>
+                                );
+                              })}
+                            </View>
+                          ) : null}
                         </View>
-                      ) : null}
-                    </View>
-                  );
-                })}
-              </View>
-              <Button
-                label={savingCategories ? "Saving..." : "Save category mapping"}
-                disabled={
-                  savingCategories ||
-                  categoryHelpCandidates.length === 0 ||
-                  !categoryHelpCandidates.some((candidate) => Boolean(categorySelections[candidate.merchant_key]))
-                }
-                onPress={async () => {
-                  if (!userId) {
-                    return;
-                  }
-                  const mappings: CategoryMappingItem[] = categoryHelpCandidates
-                    .filter((candidate) => Boolean(categorySelections[candidate.merchant_key]))
-                    .map((candidate) => ({
-                      merchant_key: candidate.merchant_key,
-                      merchant_label: candidate.merchant_label,
-                      category_code: categorySelections[candidate.merchant_key]
-                    }));
-                  if (mappings.length === 0) {
-                    return;
-                  }
-                  try {
-                    setSavingCategories(true);
-                    await saveCategoryMappings(userId, mappings);
-                    const refreshed = await getImportCoverage(
-                      userId,
-                      sessionUploads.map((item) => item.upload_id)
-                    );
-                    setImportCoverage(refreshed);
-                    setCategorySelections({});
-                    setOpenCategoryKey(null);
-                    await refreshDashboard();
-                    Alert.alert("Saved", "Thanks. We will auto-map these next time.");
-                  } catch (error) {
-                    Alert.alert("Could not save", error instanceof Error ? error.message : "Please try again.");
-                  } finally {
-                    setSavingCategories(false);
-                  }
-                }}
-              />
+                      );
+                    })}
+                  </View>
+                  <Button
+                    label={savingCategories ? "Saving..." : "Save category mapping"}
+                    disabled={
+                      savingCategories ||
+                      categoryHelpCandidates.length === 0 ||
+                      !categoryHelpCandidates.some((candidate) => Boolean(categorySelections[candidate.merchant_key]))
+                    }
+                    onPress={async () => {
+                      if (!userId) {
+                        return;
+                      }
+                      const mappings: CategoryMappingItem[] = categoryHelpCandidates
+                        .filter((candidate) => Boolean(categorySelections[candidate.merchant_key]))
+                        .map((candidate) => ({
+                          merchant_key: candidate.merchant_key,
+                          merchant_label: candidate.merchant_label,
+                          category_code: categorySelections[candidate.merchant_key]
+                        }));
+                      if (mappings.length === 0) {
+                        return;
+                      }
+                      try {
+                        setSavingCategories(true);
+                        await saveCategoryMappings(userId, mappings);
+                        const refreshed = await getImportCoverage(
+                          userId,
+                          sessionUploads.map((item) => item.upload_id)
+                        );
+                        setImportCoverage(refreshed);
+                        setCategorySelections({});
+                        setOpenCategoryKey(null);
+                        setShowCategoryHelp(false);
+                        await refreshDashboard();
+                        Alert.alert("Saved", "Thanks. We will auto-map these next time.");
+                      } catch (error) {
+                        Alert.alert("Could not save", error instanceof Error ? error.message : "Please try again.");
+                      } finally {
+                        setSavingCategories(false);
+                      }
+                    }}
+                  />
+                </>
+              ) : null}
             </View>
           ) : null}
 
@@ -598,27 +777,90 @@ export default function ImportStatementScreen() {
         </View>
       ) : null}
 
-      {step === "sample_load" ? (
+      {step === "sample_insights" ? (
         <View style={[commonStyles.card, styles.card]}>
-          <Text style={styles.title}>{t(language, "sampleTitle")}</Text>
-          <Text style={styles.body}>{t(language, "sampleBody")}</Text>
-          <Button label={loadingSample ? "Loading..." : t(language, "useSample")} variant="secondary" onPress={loadSample} />
-          <Button label={t(language, "back")} variant="secondary" onPress={() => resetFlow("choose")} />
-        </View>
-      ) : null}
-
-      {step === "sample_insights" && cashflowSummary ? (
-        <View style={[commonStyles.card, styles.card]}>
-          <Text style={styles.title}>Sample Insights</Text>
-          <Text style={styles.body}>Safe to spend: {formatMoney(cashflowSummary.safe_to_spend)}</Text>
-          <Text style={styles.body}>Daily reserve: {formatMoney(cashflowSummary.daily_needs_required)}</Text>
-          <Text style={styles.body}>Already spoken for: {formatMoney(cashflowSummary.upcoming_dues_total)}</Text>
+          <Text style={styles.title}>{t(language, "insightsSummary")}</Text>
+          <View style={styles.summaryGrid}>
+            <View style={styles.summaryItem}>
+              <Text style={styles.summaryLabel}>{t(language, "moneyOut")}</Text>
+              <Text style={styles.summaryValue}>{formatMoney(spendingSummary?.total_spend ?? 0)}</Text>
+            </View>
+            <View style={styles.summaryItem}>
+              <Text style={styles.summaryLabel}>{t(language, "moneyIn")}</Text>
+              <Text style={styles.summaryValue}>{formatMoney(spendingSummary?.monthly_income ?? 0)}</Text>
+            </View>
+          </View>
+          {spendingSummary?.top_categories?.length ? (
+            <View style={styles.recurringSection}>
+              <Text style={styles.recurringLabel}>{t(language, "topSpendCategories")}</Text>
+              {spendingSummary.top_categories.slice(0, 5).map((category) => (
+                <Text key={category.category} style={styles.recurringAmount}>
+                  {prettyCategory(category.category) || category.category}: {formatMoney(category.amount)}
+                </Text>
+              ))}
+            </View>
+          ) : null}
+          {samplePendingDues.length ? (
+            <View style={styles.recurringSection}>
+              <Text style={styles.recurringLabel}>{t(language, "recurringDuesFound")}</Text>
+              <Text style={styles.body}>Confirm dues once. We will show them on Home as protected.</Text>
+              <View style={styles.duesList}>
+                {samplePendingDues.map((item) => {
+                  const selected = selectedSampleDueKeys[item.due_key] !== false;
+                  return (
+                    <ChoiceCard
+                      key={item.due_key}
+                      title={`${item.name} · ${formatMoney(item.remaining_amount)}`}
+                      subtitle={`due ${item.due_date}`}
+                      icon="repeat-outline"
+                      selected={selected}
+                      onPress={() =>
+                        setSelectedSampleDueKeys((current) => ({
+                          ...current,
+                          [item.due_key]: !selected
+                        }))
+                      }
+                    />
+                  );
+                })}
+              </View>
+              <Button
+                label={confirmingSampleDues ? "Confirming..." : `Confirm Dues (${selectedSampleCount})`}
+                disabled={confirmingSampleDues || selectedSampleCount === 0 || !userId}
+                onPress={async () => {
+                  if (!userId) {
+                    return;
+                  }
+                  const toConfirm = samplePendingDues.filter((item) => selectedSampleDueKeys[item.due_key] !== false);
+                  if (!toConfirm.length) {
+                    return;
+                  }
+                  try {
+                    setConfirmingSampleDues(true);
+                    for (const item of toConfirm) {
+                      await confirmPatternDue(userId, item.name, item.remaining_amount, item.due_date, "monthly");
+                    }
+                    setHiddenSampleDueKeys((current) => ({
+                      ...current,
+                      ...Object.fromEntries(toConfirm.map((item) => [item.due_key, true]))
+                    }));
+                    await refreshDashboard();
+                    Alert.alert("Done", "Dues confirmed and added to Home.");
+                  } catch (error) {
+                    Alert.alert("Could not confirm dues", error instanceof Error ? error.message : "Please try again.");
+                  } finally {
+                    setConfirmingSampleDues(false);
+                  }
+                }}
+              />
+            </View>
+          ) : null}
           <Button label={t(language, "continueToHome")} onPress={() => router.replace("/(tabs)/home")} />
           <Button label={t(language, "startOver")} variant="secondary" onPress={() => resetFlow("choose")} />
         </View>
       ) : null}
 
-      {loadingSample || uploading || confirming ? (
+      {loadingSample || uploading || confirming || confirmingSampleDues ? (
         <View style={styles.loadingRow}>
           <ActivityIndicator color={theme.colors.primary} />
           <Text style={styles.help}>{t(language, "importBuilding")}</Text>
@@ -644,20 +886,6 @@ const styles = StyleSheet.create({
   },
   duesList: {
     gap: theme.spacing.sm
-  },
-  dueWrap: {
-    gap: theme.spacing.sm,
-    marginBottom: theme.spacing.sm
-  },
-  input: {
-    minHeight: 48,
-    borderRadius: theme.radius.md,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    backgroundColor: theme.colors.surfaceMuted,
-    paddingHorizontal: theme.spacing.md,
-    fontSize: theme.typography.body,
-    color: theme.colors.text
   },
   loadingRow: {
     flexDirection: "row",
@@ -700,6 +928,28 @@ const styles = StyleSheet.create({
     borderLeftWidth: 3,
     borderLeftColor: theme.colors.primary
   },
+  summarySection: {
+    marginTop: theme.spacing.md,
+    paddingVertical: theme.spacing.sm,
+    paddingHorizontal: theme.spacing.md,
+    backgroundColor: theme.colors.surfaceMuted,
+    borderRadius: theme.radius.md
+  },
+  editorSection: {
+    marginTop: theme.spacing.md,
+    paddingVertical: theme.spacing.sm,
+    paddingHorizontal: theme.spacing.md,
+    backgroundColor: "#F7FCFA",
+    borderRadius: theme.radius.md,
+    borderWidth: 1,
+    borderColor: "#CFE8DF"
+  },
+  editorTitle: {
+    fontSize: theme.typography.body,
+    fontWeight: "700",
+    color: theme.colors.text,
+    marginBottom: 4
+  },
   recurringLabel: {
     fontSize: theme.typography.caption,
     color: theme.colors.textMuted,
@@ -726,6 +976,77 @@ const styles = StyleSheet.create({
   mappingMeta: {
     fontSize: theme.typography.caption,
     color: theme.colors.textMuted
+  },
+  dueHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: theme.spacing.sm
+  },
+  dueHeaderTitle: {
+    flex: 1,
+    fontSize: theme.typography.caption,
+    color: theme.colors.textMuted
+  },
+  dueIdentityRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: theme.spacing.sm
+  },
+  dueIdentityText: {
+    flex: 1,
+    fontSize: theme.typography.body,
+    fontWeight: "600",
+    color: theme.colors.text
+  },
+  dueIdentityAmount: {
+    fontSize: theme.typography.caption,
+    color: theme.colors.textMuted
+  },
+  includeChip: {
+    borderRadius: theme.radius.pill,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderWidth: 1
+  },
+  includeChipOn: {
+    backgroundColor: "#EAF7F1",
+    borderColor: "#7FB69A"
+  },
+  includeChipOff: {
+    backgroundColor: theme.colors.surfaceMuted,
+    borderColor: theme.colors.border
+  },
+  includeChipText: {
+    fontSize: 12,
+    fontWeight: "600"
+  },
+  includeChipTextOn: {
+    color: "#186E4A"
+  },
+  includeChipTextOff: {
+    color: theme.colors.textMuted
+  },
+  dueEditInput: {
+    minHeight: 40,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    borderRadius: theme.radius.md,
+    paddingHorizontal: theme.spacing.sm,
+    fontSize: theme.typography.caption,
+    color: theme.colors.text,
+    backgroundColor: theme.colors.surfaceMuted
+  },
+  dueAmountInput: {
+    minHeight: 40,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    borderRadius: theme.radius.md,
+    paddingHorizontal: theme.spacing.sm,
+    fontSize: theme.typography.caption,
+    color: theme.colors.text,
+    backgroundColor: theme.colors.surfaceMuted
   },
   mappingPicker: {
     minHeight: 42,

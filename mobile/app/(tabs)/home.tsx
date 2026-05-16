@@ -7,7 +7,6 @@ import { Button } from "../../components/Button";
 import { EmptyStateCard } from "../../components/EmptyStateCard";
 import { QuickActionTile } from "../../components/QuickActionTile";
 import { LanguageCode, t } from "../../i18n";
-import { updateBankBalance } from "../../services/api/moneyos";
 import { useSessionStore } from "../../store/session";
 import { commonStyles, theme } from "../../theme";
 
@@ -68,39 +67,6 @@ function daysUntil(value?: string | null) {
   parsed.setHours(0, 0, 0, 0);
   today.setHours(0, 0, 0, 0);
   return Math.max(Math.round((parsed.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)), 1);
-}
-
-function buildSafeToSpendHelper(
-  language: LanguageCode,
-  profile: { income_pattern?: string | null; next_income_in_days?: number | null; salary_day_of_month?: number | null } | null,
-  nextIncomeDate?: string | null
-) {
-  if (profile?.next_income_in_days) {
-    if (profile.next_income_in_days <= 3) {
-      return language === "hi" ? "अगले कुछ दिनों के लिए" : language === "mr" ? "पुढच्या काही दिवसांसाठी" : "for the next few days";
-    }
-    if (profile.next_income_in_days <= 7) {
-      return language === "hi" ? "अगले हफ्ते के लिए" : language === "mr" ? "पुढच्या आठवड्यासाठी" : "for the next week";
-    }
-    if (profile.next_income_in_days <= 30) {
-      return language === "hi" ? "अगले पैसे आने तक" : language === "mr" ? "पुढचे पैसे येईपर्यंत" : "till the next money point";
-    }
-    return language === "hi" ? "अगले बड़े पैसे आने तक" : language === "mr" ? "पुढचे मोठे पैसे येईपर्यंत" : "till the next big money point";
-  }
-  if (profile?.income_pattern === "weekly") {
-    return language === "hi" ? "इस हफ्ते के बाकी दिनों के लिए" : language === "mr" ? "या आठवड्याच्या उरलेल्या दिवसांसाठी" : "for the rest of this week";
-  }
-  if (profile?.income_pattern === "daily") {
-    return language === "hi" ? "अगले कुछ दिनों के लिए" : language === "mr" ? "पुढच्या काही दिवसांसाठी" : "for the next few days";
-  }
-  if (profile?.income_pattern === "seasonal" || profile?.income_pattern === "mixed") {
-    return language === "hi" ? "अगले पैसे आने तक" : language === "mr" ? "पुढचे पैसे येईपर्यंत" : "till the next money point";
-  }
-  if (nextIncomeDate) {
-    const dateText = new Date(nextIncomeDate).toLocaleDateString("en-IN", { day: "numeric", month: "short" });
-    return language === "hi" ? `${dateText} से पहले` : language === "mr" ? `${dateText} आधी` : `before ${dateText}`;
-  }
-  return language === "hi" ? "अगले पैसे आने से पहले" : language === "mr" ? "पुढचे पैसे येण्याआधी" : "before next money in";
 }
 
 function buildGaugeState(language: LanguageCode, status?: string | null, confidence?: string | null) {
@@ -226,6 +192,44 @@ function buildCreditCardOutstandingWatchout(language: LanguageCode, amount: numb
     return `${t(language, "creditCardOutstandingWatchout")} - ${amountText} अजूनही सुरक्षित नाही`;
   }
   return `${t(language, "creditCardOutstandingWatchout")} - ${amountText} still unprotected`;
+}
+
+function buildDueSoonWatchouts(
+  language: LanguageCode,
+  items: Array<{ name: string; due_date: string; status: "pending" | "partial" | "paid"; remaining_amount: number }>
+) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const watchouts: string[] = [];
+  for (const item of items) {
+    if (item.status === "paid" || item.remaining_amount <= 0) {
+      continue;
+    }
+    const dueDate = new Date(item.due_date);
+    dueDate.setHours(0, 0, 0, 0);
+    const daysLeft = Math.round((dueDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+    if (daysLeft < 0 || daysLeft > 3) {
+      continue;
+    }
+    if (language === "hi") {
+      watchouts.push(`${item.name}: ${daysLeft} दिन में देय · ${formatMoney(item.remaining_amount)}`);
+    } else if (language === "mr") {
+      watchouts.push(`${item.name}: ${daysLeft} दिवसांत देय · ${formatMoney(item.remaining_amount)}`);
+    } else {
+      watchouts.push(`${item.name} due in ${daysLeft} day${daysLeft === 1 ? "" : "s"}: ${formatMoney(item.remaining_amount)}.`);
+    }
+  }
+  return watchouts;
+}
+
+function buildWatchoutHint(language: LanguageCode) {
+  if (language === "hi") {
+    return "अगले 3 दिनों में देय रकम, 'ध्यान देने वाली बातें' सेक्शन में दिखेगी।";
+  }
+  if (language === "mr") {
+    return "पुढील 3 दिवसांत येणारी देणी, 'लक्ष द्या' विभागात दिसतील.";
+  }
+  return "Dues in the next 3 days appear in Watchouts below.";
 }
 
 function buildDataHealthLine(
@@ -358,6 +362,16 @@ function buildKeepAsideCopy(language: LanguageCode) {
     safeAfter: "Safe after this",
     paidCount: (count: number) => `${count} already handled this cycle`
   };
+}
+
+function dailyEditLabel(language: LanguageCode) {
+  if (language === "hi") {
+    return "बदलें";
+  }
+  if (language === "mr") {
+    return "बदला";
+  }
+  return "Edit";
 }
 
 type SchemeCard = {
@@ -561,21 +575,8 @@ export default function HomeScreen() {
   const refreshDashboard = useSessionStore((state) => state.refreshDashboard);
   const dataMode = useSessionStore((state) => state.dataMode);
   const error = useSessionStore((state) => state.error);
-  const userId = useSessionStore((state) => state.userId);
   const homeCopy = buildHomeCopy(language);
   const isBusinessOrHybridUser = profile?.user_type === "business_self_employed" || profile?.receives_salary_besides_business;
-
-  const markBankBalanceConfirmed = async (amount: number) => {
-    if (!userId) {
-      return;
-    }
-    try {
-      await updateBankBalance(userId, amount, "detected");
-      await refreshDashboard();
-    } catch (err) {
-      console.error("Failed to confirm bank balance:", err);
-    }
-  };
 
   if (!profile) {
     return (
@@ -592,7 +593,6 @@ export default function HomeScreen() {
         { key: "business_customer_payment", label: t(language, "businessCustomerPaymentAction"), icon: "cash-outline", hint: t(language, "businessCustomerPaymentHint") },
         { key: "business_supplier_expense", label: t(language, "businessSupplierExpenseAction"), icon: "cube-outline", hint: t(language, "businessSupplierExpenseHint") },
         { key: "business_cash_expense", label: t(language, "businessCashExpenseAction"), icon: "briefcase-outline", hint: t(language, "businessCashExpenseHint") },
-        { key: "cash_set", label: t(language, "cashInHandAction"), icon: "wallet-outline", hint: homeCopy.resetCashHint },
         { key: "add_due", label: t(language, "addUpcomingDueAction"), icon: "alarm-outline", hint: homeCopy.protectDueHint }
       ]
     : [
@@ -600,12 +600,10 @@ export default function HomeScreen() {
       ? [
           { key: "cash_received", label: t(language, "cashReceivedAction"), icon: "add-circle-outline", hint: homeCopy.addMoneyHint },
           { key: "cash_day_total", label: t(language, "quickActionDayTotal"), icon: "calculator-outline", hint: t(language, "dayTotalHint") },
-          { key: "cash_set", label: t(language, "cashInHandAction"), icon: "wallet-outline", hint: homeCopy.resetCashHint },
           { key: "cash_spent", label: t(language, "bigCashSpentAction"), icon: "remove-circle-outline", hint: homeCopy.cashBlindSpotHint }
         ]
       : [
           { key: "cash_received", label: t(language, "cashReceivedAction"), icon: "add-circle-outline", hint: homeCopy.addMoneyHint },
-          { key: "cash_set", label: t(language, "cashInHandAction"), icon: "wallet-outline", hint: homeCopy.resetCashHint },
           { key: "cash_spent", label: t(language, "bigCashSpentAction"), icon: "remove-circle-outline", hint: homeCopy.cashBlindSpotHint }
         ]),
         { key: "add_due", label: t(language, "addUpcomingDueAction"), icon: "alarm-outline", hint: homeCopy.protectDueHint }
@@ -616,14 +614,14 @@ export default function HomeScreen() {
   const staleCashDays = daysSince(cashflow?.latest_cash_update_date);
   const nextIncomeDays = daysUntil(cashflow?.next_income_date);
   const keepAsideCopy = buildKeepAsideCopy(language);
-  const recentLedgerEntries = dashboard.recentLedgerEntries ?? [];
   const showStaleCashBanner = Boolean(cashflow?.cash_is_stale);
   const schemeCards = buildSchemeCards(language, profile.user_type);
   const creditCardOutstandingWatchouts =
     cashflow?.protected_due_items
       .filter((item) => item.status === "partial" && item.remaining_amount > 0 && isCreditCardDueName(item.name))
       .map((item) => buildCreditCardOutstandingWatchout(language, item.remaining_amount)) ?? [];
-  const allWatchouts = [...creditCardOutstandingWatchouts, ...(cashflow?.watchouts ?? [])];
+  const dueSoonWatchouts = cashflow ? buildDueSoonWatchouts(language, cashflow.protected_due_items) : [];
+  const allWatchouts = Array.from(new Set([...dueSoonWatchouts, ...creditCardOutstandingWatchouts, ...(cashflow?.watchouts ?? [])]));
   const heroValue = cashflow
     ? cashflow.shortfall_amount > 0
       ? formatMoney(cashflow.shortfall_amount)
@@ -691,33 +689,6 @@ export default function HomeScreen() {
             <Text style={styles.personaEyebrow}>{homeCopy.moneyPath}</Text>
             <Text style={styles.personaTitle}>{persona.title}</Text>
             <Text style={styles.personaBody}>{persona.subtitle}</Text>
-          </View>
-        </View>
-      ) : null}
-
-      {cashflow?.bank_balance_needs_confirmation && dataMode === "real" ? (
-        <View style={[commonStyles.card, commonStyles.shadow, styles.bankConfirmCard]}>
-          <Text style={styles.bankConfirmTitle}>{t(language, "bankConfirmTitle")}</Text>
-          <Text style={styles.bankConfirmAmount}>
-            {formatMoney(cashflow.detected_bank_balance)}
-          </Text>
-          <Text style={styles.bankConfirmHelper}>
-            {dataMode === "real" ? t(language, "bankConfirmHelper") : t(language, "bankConfirmHelperSample")}
-          </Text>
-          <View style={styles.bankConfirmActions}>
-            <Button
-              label={t(language, "bankConfirmYes")}
-              onPress={() => {
-                if (cashflow?.detected_bank_balance !== undefined) {
-                  markBankBalanceConfirmed(cashflow.detected_bank_balance);
-                }
-              }}
-            />
-            <Button
-              label={t(language, "bankConfirmEdit")}
-              variant="secondary"
-              onPress={() => router.push("/edit-bank-balance" as never)}
-            />
           </View>
         </View>
       ) : null}
@@ -823,34 +794,14 @@ export default function HomeScreen() {
             </View>
           ) : null}
 
-          <View style={styles.metricRow}>
-            <View style={[commonStyles.card, styles.metricCard]}>
-              <Text style={styles.metricLabel}>{t(language, "safeToSpend")}</Text>
-              <Text style={styles.metricValue}>{formatMoney(cashflow.safe_to_spend)}</Text>
-              <Text style={styles.metricHelper}>
-                {buildSafeToSpendHelper(language, profile, cashflow.next_income_date)}
-              </Text>
-            </View>
-            <View style={[commonStyles.card, styles.metricCard]}>
-              <Text style={styles.metricLabel}>{t(language, "alreadySpokenFor")}</Text>
-              <Text style={styles.metricValue}>{formatMoney(cashflow.upcoming_dues_total)}</Text>
-              <Text style={styles.metricHelper}>{homeCopy.keptAsideFirst}</Text>
-            </View>
-          </View>
-
-          <View style={styles.metricRow}>
-            <Pressable
-              accessibilityRole="button"
-              onPress={() => router.push("/edit-daily-needs")}
-              style={({ pressed }) => [commonStyles.card, styles.metricCard, pressed ? styles.metricCardPressed : null]}
-            >
-              <View style={styles.metricHeaderButton}>
+          <View style={styles.metricGrid}>
+            <View style={[commonStyles.card, styles.metricCard, styles.metricCardUnified, styles.metricGridItem]}>
+              <View style={styles.metricHeaderSimple}>
                 <Text style={styles.metricLabel}>
                 {cashflow.daily_needs_required > 0 && cashflow.daily_needs_buffer <= 0
                   ? t(language, "dailyNeedsToProtect")
                   : t(language, "dailyNeedsCovered")}
                 </Text>
-                <Ionicons name="create-outline" size={16} color={theme.colors.textMuted} />
               </View>
               <Text style={styles.metricValue}>
                 {formatMoney(cashflow.daily_needs_required > 0 && cashflow.daily_needs_buffer <= 0 ? cashflow.daily_needs_required : cashflow.daily_needs_buffer)}
@@ -861,17 +812,19 @@ export default function HomeScreen() {
                   : cashflow.daily_needs_buffer <= 0
                     ? homeCopy.neededBeforeNextMoney
                     : cashflow.daily_needs_buffer >= cashflow.daily_needs_required
-                      ? homeCopy.fullyCoveredTillNextIncome
+                    ? homeCopy.fullyCoveredTillNextIncome
                       : homeCopy.ofNeededTillNextIncome(formatMoney(cashflow.daily_needs_required))}
                 {cashflow.baseline_daily_spend > 0 ? ` · ${formatMoney(cashflow.baseline_daily_spend)}/day` : ""}
               </Text>
-              {cashflow.baseline_daily_spend > 0 && nextIncomeDays ? (
-                <Text style={styles.metricSubHelper}>
-                  {`${formatMoney(cashflow.baseline_daily_spend)}/day × ${nextIncomeDays} day${nextIncomeDays === 1 ? "" : "s"}`}
-                </Text>
-              ) : null}
-            </Pressable>
-            <View style={[commonStyles.card, styles.metricCard]}>
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => router.push("/edit-daily-needs")}
+                style={({ pressed }) => [styles.metricFooterAction, pressed ? styles.metricFooterActionPressed : null]}
+              >
+                <Text style={styles.metricFooterActionText}>{dailyEditLabel(language)}</Text>
+              </Pressable>
+            </View>
+            <View style={[commonStyles.card, styles.metricCard, styles.metricCardUnified, styles.metricGridItem]}>
               <Text style={styles.metricLabel}>{dataMode === "real" ? t(language, "bankSeen") : t(language, "bankSeenSample")}</Text>
               <Text style={styles.metricValue}>{formatMoney(cashflow.working_bank_balance || displayedBankSeen)}</Text>
               <Text style={styles.metricHelper}>
@@ -881,46 +834,33 @@ export default function HomeScreen() {
                     ? homeCopy.bankSeenNegativeHelper
                     : homeCopy.bankSeenHelper}
               </Text>
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => router.push("/edit-bank-balance" as never)}
+                style={({ pressed }) => [styles.metricFooterAction, pressed ? styles.metricFooterActionPressed : null]}
+              >
+                <Text style={styles.metricFooterActionText}>{t(language, "bankConfirmEdit")}</Text>
+              </Pressable>
             </View>
+            {profile.tracks_cash ? (
+              <View style={[commonStyles.card, styles.metricCard, styles.metricCardUnified, styles.metricGridItem]}>
+                <Text style={styles.metricLabel}>{t(language, "cashWithYou")}</Text>
+                <Text style={styles.metricValue}>{cashflow.cash_is_stale ? "—" : formatMoney(cashflow.cash_on_hand)}</Text>
+                <Text style={styles.metricHelper}>
+                  {cashflow.cash_is_stale
+                    ? `${t(language, "staleCashUnknown")}${staleCashDays !== null ? ` · ${staleCashDays}d ago` : ""}`
+                    : homeCopy.cashOnHandHelper}
+                </Text>
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() => router.push({ pathname: "/add-entry", params: { mode: "cash_set" } })}
+                  style={({ pressed }) => [styles.metricFooterAction, pressed ? styles.metricFooterActionPressed : null]}
+                >
+                  <Text style={styles.metricFooterActionText}>{t(language, "bankConfirmEdit")}</Text>
+                </Pressable>
+              </View>
+            ) : null}
           </View>
-
-          <View style={styles.metricRow}>
-            <View style={[commonStyles.card, styles.metricCard]}>
-              <Text style={styles.metricLabel}>{t(language, "cashWithYou")}</Text>
-              <Text style={styles.metricValue}>{cashflow.cash_is_stale ? "—" : formatMoney(cashflow.cash_on_hand)}</Text>
-              <Text style={styles.metricHelper}>
-                {cashflow.cash_is_stale
-                  ? `${t(language, "staleCashUnknown")}${staleCashDays !== null ? ` · ${staleCashDays}d ago` : ""}`
-                  : homeCopy.cashOnHandHelper}
-              </Text>
-            </View>
-          </View>
-
-          {recentLedgerEntries.length > 0 ? (
-            <View style={[commonStyles.card, commonStyles.shadow, styles.recentCard]}>
-              <Text style={styles.recentTitle}>Recent updates</Text>
-              {recentLedgerEntries.slice(0, 4).map((entry) => {
-                const isMoneyIn = entry.cash_direction === "in" || entry.entry_type === "income";
-                const sign = isMoneyIn ? "+" : "-";
-                const dateLabel = new Date(entry.entry_date).toLocaleDateString("en-IN", {
-                  day: "numeric",
-                  month: "short"
-                });
-                const label = entry.description || entry.counterparty_name || entry.entry_type.replace(/_/g, " ");
-                return (
-                  <View key={entry.id} style={styles.recentRow}>
-                    <View style={styles.recentCopy}>
-                      <Text style={styles.recentLabel}>{label}</Text>
-                      <Text style={styles.recentDate}>{dateLabel}</Text>
-                    </View>
-                    <Text style={[styles.recentAmount, isMoneyIn ? styles.recentAmountIn : styles.recentAmountOut]}>
-                      {`${sign} ${formatMoney(entry.amount)}`}
-                    </Text>
-                  </View>
-                );
-              })}
-            </View>
-          ) : null}
 
           <View style={[commonStyles.card, commonStyles.shadow, styles.requiredCard]}>
             <View style={styles.requiredHeader}>
@@ -1003,7 +943,8 @@ export default function HomeScreen() {
           <View style={[commonStyles.card, styles.nextStepCard]}>
             <Text style={styles.nextStepEyebrow}>{t(language, "keepFresh")}</Text>
             <Text style={styles.nextStepTitle}>{staleLabel}</Text>
-            <Text style={styles.nextStepBody}>{homeCopy.trustBody}</Text>
+            <Text style={styles.nextStepBody}>{t(language, "keepFreshBody")}</Text>
+            <Text style={styles.nextStepHint}>{buildWatchoutHint(language)}</Text>
           </View>
 
           <View style={[commonStyles.card, commonStyles.shadow, styles.highlightCard]}>
@@ -1079,6 +1020,30 @@ export default function HomeScreen() {
         ) : (
           <EmptyStateCard title="No watchouts yet" body="Once statement data is in, this area will call out dues, shortfalls, and where to stay careful." />
         )}
+      </View>
+
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Recent updates</Text>
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => router.push("/history")}
+          style={({ pressed }) => [
+            commonStyles.card,
+            commonStyles.shadow,
+            styles.historyNavCard,
+            pressed ? styles.historyNavCardPressed : null
+          ]}
+        >
+          <View style={styles.historyNavRow}>
+            <View style={styles.historyNavIconWrap}>
+              <Ionicons name="time-outline" size={18} color={theme.colors.primary} />
+            </View>
+            <View style={styles.historyNavCopy}>
+              <Text style={styles.historyNavTitle}>This week + recent money updates</Text>
+              <Text style={styles.historyNavBody}>Open activity history and what changed recently.</Text>
+            </View>
+          </View>
+        </Pressable>
       </View>
     </AppScreen>
   );
@@ -1317,8 +1282,9 @@ const styles = StyleSheet.create({
     lineHeight: 24,
     color: theme.colors.textMuted
   },
-  metricRow: {
+  metricGrid: {
     flexDirection: "row",
+    flexWrap: "wrap",
     gap: theme.spacing.md
   },
   nextStepCard: {
@@ -1398,18 +1364,37 @@ const styles = StyleSheet.create({
     flex: 1,
     gap: theme.spacing.xs
   },
-  metricCardPressed: {
-    opacity: 0.86
+  metricCardUnified: {
+    minHeight: 134,
+    justifyContent: "space-between",
+    backgroundColor: "#FCFCFB",
+    borderWidth: 1,
+    borderColor: "#E6E9E5"
   },
-  metricHeaderButton: {
+  metricGridItem: {
+    width: "48%"
+  },
+  metricHeaderSimple: {
+    marginBottom: 2
+  },
+  metricFooterAction: {
     alignSelf: "flex-start",
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6
+    marginTop: theme.spacing.xs,
+    paddingVertical: 2
+  },
+  metricFooterActionPressed: {
+    opacity: 0.65
+  },
+  metricFooterActionText: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: theme.colors.primary,
+    textDecorationLine: "underline"
   },
   metricLabel: {
     fontSize: theme.typography.caption,
-    color: theme.colors.textMuted
+    color: theme.colors.textMuted,
+    lineHeight: 18
   },
   metricValue: {
     fontSize: 26,
@@ -1418,47 +1403,49 @@ const styles = StyleSheet.create({
   },
   metricHelper: {
     fontSize: theme.typography.caption,
-    color: theme.colors.textMuted
+    color: theme.colors.textMuted,
+    lineHeight: 18
   },
-  metricSubHelper: {
-    fontSize: 12,
-    color: theme.colors.textMuted
+  historyNavCard: {
+    gap: 8,
+    backgroundColor: "#F5F9F7",
+    borderWidth: 1,
+    borderColor: "#D8E8E0"
   },
-  recentCard: {
-    gap: theme.spacing.sm
+  historyNavCardPressed: {
+    opacity: 0.78
   },
-  recentTitle: {
-    fontSize: theme.typography.body,
-    fontWeight: "700",
-    color: theme.colors.text
-  },
-  recentRow: {
+  historyNavRow: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-    gap: theme.spacing.sm
+    gap: 10
   },
-  recentCopy: {
+  historyNavIconWrap: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#E7F4EE"
+  },
+  historyNavCopy: {
     flex: 1,
     gap: 2
   },
-  recentLabel: {
-    fontSize: theme.typography.caption,
+  historyNavTitle: {
+    fontSize: 15,
+    fontWeight: "700",
     color: theme.colors.text
   },
-  recentDate: {
-    fontSize: 12,
+  historyNavBody: {
+    fontSize: theme.typography.caption,
+    lineHeight: 18,
     color: theme.colors.textMuted
   },
-  recentAmount: {
+  nextStepHint: {
+    marginTop: 6,
     fontSize: theme.typography.caption,
-    fontWeight: "700"
-  },
-  recentAmountIn: {
-    color: theme.colors.success
-  },
-  recentAmountOut: {
-    color: theme.colors.danger
+    color: theme.colors.textMuted
   },
   section: {
     gap: theme.spacing.md
@@ -1605,28 +1592,5 @@ const styles = StyleSheet.create({
   paidCountText: {
     fontSize: theme.typography.caption,
     color: theme.colors.textMuted
-  },
-  bankConfirmCard: {
-    borderLeftWidth: 4,
-    borderLeftColor: theme.colors.primary,
-    gap: theme.spacing.md
-  },
-  bankConfirmTitle: {
-    fontSize: theme.typography.body,
-    fontWeight: "600",
-    color: theme.colors.text
-  },
-  bankConfirmAmount: {
-    fontSize: 28,
-    fontWeight: "700",
-    color: theme.colors.text
-  },
-  bankConfirmHelper: {
-    fontSize: theme.typography.caption,
-    color: theme.colors.textMuted
-  },
-  bankConfirmActions: {
-    gap: theme.spacing.sm,
-    marginTop: theme.spacing.md
   }
 });

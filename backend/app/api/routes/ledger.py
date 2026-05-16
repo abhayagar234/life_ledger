@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user, get_db
@@ -13,15 +13,16 @@ router = APIRouter(prefix="/ledger-entries", tags=["ledger entries"])
 
 @router.get("", response_model=list[LedgerEntryRead])
 def list_ledger_entries(
+    limit: int = Query(default=50, ge=1, le=200),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    return (
+    query = (
         db.query(LedgerEntry)
         .filter(LedgerEntry.user_id == current_user.id)
         .order_by(LedgerEntry.entry_date.desc(), LedgerEntry.created_at.desc())
-        .all()
     )
+    return query.limit(limit).all()
 
 
 @router.post("", response_model=LedgerEntryRead)

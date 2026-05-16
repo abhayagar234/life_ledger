@@ -119,7 +119,7 @@ BRAND_TYPE_RULES = {
         ],
     },
     "credit_card_payment": {
-        "category": "bills",
+        "category": "credit_card_payment",
         "confidence": 0.95,
         "is_fixed_obligation": True,
         "patterns": [
