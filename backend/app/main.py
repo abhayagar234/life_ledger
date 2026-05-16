@@ -37,8 +37,8 @@ def _ensure_financial_profile_columns() -> None:
         if "loans" in inspector.get_table_names():
             loan_columns = {column["name"] for column in inspector.get_columns("loans")}
             if "confirmed" not in loan_columns:
-                connection.execute(text("ALTER TABLE loans ADD COLUMN confirmed BOOLEAN DEFAULT 1"))
-                connection.execute(text("UPDATE loans SET confirmed = 1 WHERE confirmed IS NULL"))
+                connection.execute(text("ALTER TABLE loans ADD COLUMN confirmed BOOLEAN DEFAULT TRUE"))
+                connection.execute(text("UPDATE loans SET confirmed = TRUE WHERE confirmed IS NULL"))
 
 
 @asynccontextmanager
