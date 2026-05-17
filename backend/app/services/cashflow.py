@@ -591,6 +591,34 @@ def build_cashflow_summary(db: Session, user_id: str, as_of: date | None = None)
         .order_by(NormalizedTransaction.transaction_date.asc())
         .all()
     )
+    used_stale_statement_window = False
+
+    if not rows:
+        latest_imported_row = (
+            db.query(NormalizedTransaction)
+            .filter(
+                NormalizedTransaction.user_id == user_id,
+                NormalizedTransaction.transaction_date <= as_of_date,
+                NormalizedTransaction.dedupe_status != "duplicate",
+            )
+            .order_by(NormalizedTransaction.transaction_date.desc())
+            .first()
+        )
+        if latest_imported_row is not None:
+            stale_window_end = latest_imported_row.transaction_date
+            stale_window_start = stale_window_end - timedelta(days=120)
+            rows = (
+                db.query(NormalizedTransaction)
+                .filter(
+                    NormalizedTransaction.user_id == user_id,
+                    NormalizedTransaction.transaction_date >= stale_window_start,
+                    NormalizedTransaction.transaction_date <= stale_window_end,
+                    NormalizedTransaction.dedupe_status != "duplicate",
+                )
+                .order_by(NormalizedTransaction.transaction_date.asc())
+                .all()
+            )
+            used_stale_statement_window = bool(rows)
 
     if not rows:
         next_income_date, _ = _next_income_date(profile, rows, as_of_date)
@@ -645,7 +673,7 @@ def build_cashflow_summary(db: Session, user_id: str, as_of: date | None = None)
                 "This is a clean start with no statement history yet.",
                 "Any cash or due you add now will show up here first.",
             ],
-            watchouts=["Add statement history later if you want the app to detect recurring spends and improve the answer."],
+            watchouts=[],
             protected_due_items=manual_due_items,
         )
 
@@ -785,6 +813,8 @@ def build_cashflow_summary(db: Session, user_id: str, as_of: date | None = None)
         confidence = _lower_confidence(confidence, "medium")
     if latest_activity_date and (as_of_date - latest_activity_date).days > 14:
         confidence = _lower_confidence(confidence, "low")
+    if used_stale_statement_window:
+        confidence = "low"
     if len(rows) < 10 or trailing_total_spend <= 0:
         confidence = _lower_confidence(confidence, "low")
     # Thin statement coverage should down-rank confidence even if rows exist.
@@ -823,6 +853,13 @@ def build_cashflow_summary(db: Session, user_id: str, as_of: date | None = None)
         plain_summary = (
             f"Slow down till {next_income_label}. Keep only essentials moving for now and protect dues before new spending."
         )
+    if used_stale_statement_window and latest_activity_date:
+        status = "needs_data"
+        headline = "Upload a recent statement to trust this number."
+        plain_summary = (
+            f"We can show a rough picture from your old statement ending {latest_activity_date.strftime('%b %d, %Y')}, "
+            "but today's Safe to Spend needs recent transactions or a bank balance update."
+        )
 
     explanations = [
         f"We used imported transactions from this income cycle up to {as_of_date.strftime('%b %d')} to estimate your cashflow.",
@@ -850,6 +887,10 @@ def build_cashflow_summary(db: Session, user_id: str, as_of: date | None = None)
             explanations.append("Bank money is still an estimate from imported statement activity until you confirm or edit it.")
         else:
             explanations.append("Bank money reflects the amount you confirmed for this cycle.")
+    if used_stale_statement_window and latest_activity_date:
+        explanations.append(
+            f"Your latest imported statement activity is from {latest_activity_date.strftime('%b %d, %Y')}, so today's number needs a recent statement or bank balance confirmation."
+        )
 
     watchouts: list[str] = []
     if safe_to_spend <= 0:
@@ -858,6 +899,10 @@ def build_cashflow_summary(db: Session, user_id: str, as_of: date | None = None)
         watchouts.append(f"Money is getting tight till {next_income_label}. Slow optional spending for a few days.")
     if confidence != "high":
         watchouts.append("This answer is still an estimate. Keep a little extra buffer this week.")
+    if used_stale_statement_window and latest_activity_date:
+        watchouts.append(
+            f"Latest statement is old ({latest_activity_date.strftime('%b %d, %Y')}). Upload a recent statement for a reliable Safe to Spend number."
+        )
     if business_reserve > 0:
         watchouts.append("Some money is being protected first for business running costs.")
 
