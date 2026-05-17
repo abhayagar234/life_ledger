@@ -406,13 +406,25 @@ export default function ImportStatementScreen() {
       setLoadingSample(true);
       const result = await loadSampleStatement(userId);
       markSampleData();
-      await refreshDashboard({ includeSecondary: true });
+      await refreshDashboard({ includeSecondary: true, force: true });
       Alert.alert("Sample ready", result.message);
       setStep("sample_insights");
     } catch (error) {
       Alert.alert("Could not load sample", error instanceof Error ? error.message : "Please try again.");
     } finally {
       setLoadingSample(false);
+    }
+  }
+
+  async function continueToHome() {
+    try {
+      setUploading(true);
+      await refreshDashboard({ includeSecondary: false, force: true });
+      router.replace("/(tabs)/home");
+    } catch (error) {
+      Alert.alert("Could not open Home", error instanceof Error ? error.message : "Please try again.");
+    } finally {
+      setUploading(false);
     }
   }
 
@@ -647,7 +659,7 @@ export default function ImportStatementScreen() {
                   try {
                     setConfirming(true);
                     await confirmDetectedDues(userId, uploadResult.upload_id, confirmed);
-                    await refreshDashboard({ includeSecondary: false });
+                    await refreshDashboard({ includeSecondary: false, force: true });
                     const confirmedKeys = new Set(
                       confirmableDetectedDues
                         .filter((due) => selectedDues[dueKey(due)] !== false)
@@ -758,7 +770,7 @@ export default function ImportStatementScreen() {
                         setCategorySelections({});
                         setOpenCategoryKey(null);
                         setShowCategoryHelp(false);
-                        await refreshDashboard({ includeSecondary: false });
+                        await refreshDashboard({ includeSecondary: false, force: true });
                         Alert.alert("Saved", "Thanks. We will auto-map these next time.");
                       } catch (error) {
                         Alert.alert("Could not save", error instanceof Error ? error.message : "Please try again.");
@@ -772,7 +784,7 @@ export default function ImportStatementScreen() {
             </View>
           ) : null}
 
-          <Button label={t(language, "continueToHome")} onPress={() => router.replace("/(tabs)/home")} />
+          <Button label={t(language, "continueToHome")} disabled={uploading} onPress={continueToHome} />
           <Button label={t(language, "startOver")} variant="secondary" onPress={() => resetFlow("choose")} />
         </View>
       ) : null}
@@ -844,7 +856,7 @@ export default function ImportStatementScreen() {
                       ...current,
                       ...Object.fromEntries(toConfirm.map((item) => [item.due_key, true]))
                     }));
-                    await refreshDashboard({ includeSecondary: false });
+                    await refreshDashboard({ includeSecondary: false, force: true });
                     Alert.alert("Done", "Dues confirmed and added to Home.");
                   } catch (error) {
                     Alert.alert("Could not confirm dues", error instanceof Error ? error.message : "Please try again.");
@@ -855,7 +867,7 @@ export default function ImportStatementScreen() {
               />
             </View>
           ) : null}
-          <Button label={t(language, "continueToHome")} onPress={() => router.replace("/(tabs)/home")} />
+          <Button label={t(language, "continueToHome")} disabled={uploading} onPress={continueToHome} />
           <Button label={t(language, "startOver")} variant="secondary" onPress={() => resetFlow("choose")} />
         </View>
       ) : null}

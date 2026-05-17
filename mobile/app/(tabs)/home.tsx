@@ -1,5 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
+import { useEffect } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { AppScreen } from "../../components/AppScreen";
@@ -603,6 +604,14 @@ export default function HomeScreen() {
   const error = useSessionStore((state) => state.error);
   const homeCopy = buildHomeCopy(language);
   const isBusinessOrHybridUser = profile?.user_type === "business_self_employed" || profile?.receives_salary_besides_business;
+  const cashflow = dashboard.cashflowSummary;
+
+  useEffect(() => {
+    if (!profile) {
+      return;
+    }
+    void refreshDashboard({ includeSecondary: false, force: dataMode !== "empty" });
+  }, [dataMode, profile, refreshDashboard]);
 
   if (!profile) {
     return (
@@ -613,7 +622,6 @@ export default function HomeScreen() {
     );
   }
 
-  const cashflow = dashboard.cashflowSummary;
   const quickActions = isBusinessOrHybridUser
     ? [
         { key: "business_customer_payment", label: t(language, "businessCustomerPaymentAction"), icon: "cash-outline", hint: t(language, "businessCustomerPaymentHint") },

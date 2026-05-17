@@ -7,6 +7,7 @@ import {
   getCashflowSummary,
   listLedgerEntries,
   getMonthlySummary,
+  getProfile,
   getSpendingSummary,
   listInsights,
   upsertProfile
@@ -67,7 +68,7 @@ type SessionStore = {
   markHydrated: () => void;
   setDraft: (patch: Partial<OnboardingDraft>) => void;
   bootstrapSession: () => Promise<void>;
-  refreshDashboard: (options?: { includeSecondary?: boolean }) => Promise<void>;
+  refreshDashboard: (options?: { includeSecondary?: boolean; force?: boolean }) => Promise<void>;
   saveOnboarding: () => Promise<ProfileRead>;
   startFreshDemo: () => Promise<void>;
   markHasRealData: () => void;
@@ -207,9 +208,40 @@ export const useSessionStore = create<SessionStore>()(
           return;
         }
 
-        if (state.userId && state.profile) {
+        if (state.userId) {
           set({ error: null });
-          void get().refreshDashboard({ includeSecondary: false });
+          try {
+            const profile = await getProfile(state.userId);
+            set((currentState) => ({
+              profile,
+              onboardingCompleted: Boolean(profile),
+              displayName: profile ? currentState.displayName : currentState.displayName,
+              onboardingDraft: profile
+                ? {
+                    displayName: currentState.displayName,
+                    preferredLanguage: currentState.onboardingDraft.preferredLanguage,
+                    userType: profile.user_type,
+                    incomePattern: profile.income_pattern,
+                    nextIncomeInDays: profile.next_income_in_days ? String(profile.next_income_in_days) : "",
+                    tracksCash: profile.tracks_cash,
+                    tracksLoans: profile.tracks_loans,
+                    tracksEmi: profile.tracks_emi,
+                    trackingScope: normalizeTrackingScope(profile.tracking_scope),
+                    startCashAmount: profile.start_cash_amount ? String(profile.start_cash_amount) : "",
+                    salaryDayOfMonth: profile.salary_day_of_month ? String(profile.salary_day_of_month) : "",
+                    businessModeEnabled: profile.business_mode_enabled,
+                    moneyMixType: profile.money_mix_type,
+                    receivesSalaryBesidesBusiness: profile.receives_salary_besides_business,
+                    businessReserveAmount: profile.business_reserve_amount ? String(profile.business_reserve_amount) : ""
+                  }
+                : currentState.onboardingDraft
+            }));
+            if (profile) {
+              void get().refreshDashboard({ includeSecondary: false });
+            }
+          } catch (error) {
+            set({ error: error instanceof Error ? error.message : "Could not restore your session." });
+          }
           return;
         }
 
@@ -269,14 +301,19 @@ export const useSessionStore = create<SessionStore>()(
       refreshDashboard: async (options = {}) => {
         const { userId } = get();
         if (!userId) {
+          set({ error: "Session missing. Please start fresh once from Setup." });
           return;
         }
         const includeSecondary = options.includeSecondary ?? true;
+        const force = options.force ?? false;
         const now = Date.now();
         if (dashboardRefreshInFlight) {
-          return dashboardRefreshInFlight;
+          if (!force) {
+            return dashboardRefreshInFlight;
+          }
+          await dashboardRefreshInFlight;
         }
-        if (now - lastDashboardRefreshAt < DASHBOARD_REFRESH_DEBOUNCE_MS && get().dashboard.cashflowSummary) {
+        if (!force && now - lastDashboardRefreshAt < DASHBOARD_REFRESH_DEBOUNCE_MS && get().dashboard.cashflowSummary) {
           return;
         }
 
