@@ -4,7 +4,6 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_db
 from app.models.user import User
 from app.schemas.auth import DemoLoginRequest, DemoLoginResponse
-from app.services.demo_data import seed_demo_financial_data
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -23,7 +22,6 @@ def demo_login(payload: DemoLoginRequest, db: Session = Depends(get_db)) -> Demo
         db.add(user)
         db.commit()
         db.refresh(user)
-    seed_demo_financial_data(db, user.id)
 
     return DemoLoginResponse(
         user_id=user.id,

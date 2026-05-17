@@ -48,7 +48,7 @@ const CATEGORY_OPTIONS: Array<{ code: string; label: string }> = [
 ];
 
 function formatMoney(amount: number) {
-  return `Rs ${Math.round(amount).toLocaleString("en-IN")}`;
+  return `₹${Math.round(amount).toLocaleString("en-IN")}`;
 }
 
 function cleanPickedName(value: string) {
@@ -365,11 +365,11 @@ export default function ImportStatementScreen() {
     try {
       setUploading(true);
       const latest = sessionUploads[sessionUploads.length - 1];
-      const summary = await getImportSummary(userId, latest.upload_id);
-      const coverage = await getImportCoverage(
-        userId,
-        sessionUploads.map((item) => item.upload_id)
-      );
+      const uploadIds = sessionUploads.map((item) => item.upload_id);
+      const [summary, coverage] = await Promise.all([
+        getImportSummary(userId, latest.upload_id),
+        getImportCoverage(userId, uploadIds)
+      ]);
       const dues = coverage.recurring_dues ?? [];
       setImportSummary(summary);
       setImportCoverage(coverage);
@@ -388,8 +388,8 @@ export default function ImportStatementScreen() {
       setCategorySelections({});
       setOpenCategoryKey(null);
       setShowCategoryHelp(false);
-      await refreshDashboard();
       setStep("real_insights");
+      void refreshDashboard({ includeSecondary: false });
     } catch (error) {
       Alert.alert("Could not generate insights", error instanceof Error ? error.message : "Please try again.");
     } finally {
@@ -406,7 +406,7 @@ export default function ImportStatementScreen() {
       setLoadingSample(true);
       const result = await loadSampleStatement(userId);
       markSampleData();
-      await refreshDashboard();
+      await refreshDashboard({ includeSecondary: true });
       Alert.alert("Sample ready", result.message);
       setStep("sample_insights");
     } catch (error) {
@@ -647,7 +647,7 @@ export default function ImportStatementScreen() {
                   try {
                     setConfirming(true);
                     await confirmDetectedDues(userId, uploadResult.upload_id, confirmed);
-                    await refreshDashboard();
+                    await refreshDashboard({ includeSecondary: false });
                     const confirmedKeys = new Set(
                       confirmableDetectedDues
                         .filter((due) => selectedDues[dueKey(due)] !== false)
@@ -758,7 +758,7 @@ export default function ImportStatementScreen() {
                         setCategorySelections({});
                         setOpenCategoryKey(null);
                         setShowCategoryHelp(false);
-                        await refreshDashboard();
+                        await refreshDashboard({ includeSecondary: false });
                         Alert.alert("Saved", "Thanks. We will auto-map these next time.");
                       } catch (error) {
                         Alert.alert("Could not save", error instanceof Error ? error.message : "Please try again.");
@@ -844,7 +844,7 @@ export default function ImportStatementScreen() {
                       ...current,
                       ...Object.fromEntries(toConfirm.map((item) => [item.due_key, true]))
                     }));
-                    await refreshDashboard();
+                    await refreshDashboard({ includeSecondary: false });
                     Alert.alert("Done", "Dues confirmed and added to Home.");
                   } catch (error) {
                     Alert.alert("Could not confirm dues", error instanceof Error ? error.message : "Please try again.");

@@ -12,7 +12,7 @@ import { commonStyles, theme } from "../../theme";
 
 function formatMoney(amount: number | null | undefined) {
   const safeAmount = Number.isFinite(amount) ? Number(amount) : 0;
-  return `Rs ${Math.round(safeAmount).toLocaleString("en-IN")}`;
+  return `₹${Math.round(safeAmount).toLocaleString("en-IN")}`;
 }
 
 function buildStaleLabel(language: LanguageCode, latestActivityDate?: string | null) {
@@ -222,6 +222,18 @@ function buildDueSoonWatchouts(
   return watchouts;
 }
 
+function isRedundantDueWatchout(value: string) {
+  return /keep this aside first/i.test(value);
+}
+
+function normalizeWatchoutKey(value: string) {
+  return value
+    .replace(/Rs\s*/gi, "₹")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+}
+
 function buildWatchoutHint(language: LanguageCode) {
   if (language === "hi") {
     return "अगले 3 दिनों में देय रकम, 'ध्यान देने वाली बातें' सेक्शन में दिखेगी।";
@@ -298,6 +310,20 @@ function buildWhyNowLine(language: LanguageCode, dues: string, cash: string, ban
     return `${dues} आधीच बांधलेले · ${cash} हातातील रोख · ${bank} बँक / बचतीत`;
   }
   return `${dues} already spoken for · ${cash} cash with you · ${bank} bank / savings left`;
+}
+
+function buildWhyNowTitle(
+  language: LanguageCode,
+  input: { status?: string | null; safeToSpend?: number | null; shortfall?: number | null }
+) {
+  const isPositiveState = (input.safeToSpend ?? 0) > 0 && (input.shortfall ?? 0) <= 0;
+  if (input.status === "safe" || isPositiveState) {
+    return language === "hi" ? "यह नंबर कैसे बना" : language === "mr" ? "हा नंबर कसा बनला" : "What this number uses";
+  }
+  if (input.status === "needs_data") {
+    return language === "hi" ? "अभी हमें क्या पता है" : language === "mr" ? "आत्ता आम्हाला काय माहिती आहे" : "What we know so far";
+  }
+  return t(language, "whyNowTitle");
 }
 
 function buildDueStatusCopy(language: LanguageCode, item: {
@@ -455,12 +481,12 @@ function buildSchemeCards(language: LanguageCode, userType: string | null | unde
     case "daily_wage":
       return [
         { name: "E-Shram", benefit: "Registration and protections for informal workers", fit: "Worth checking first if your money comes from labor, driving, delivery, or daily informal work." },
-        { name: "PMSBY", benefit: "Accident cover for Rs 20/year", fit: "Very low-cost basic protection." },
-        { name: "PMJJBY", benefit: "Life cover for Rs 436/year", fit: "Worth checking if family depends on your earnings." }
+        { name: "PMSBY", benefit: "Accident cover for ₹20/year", fit: "Very low-cost basic protection." },
+        { name: "PMJJBY", benefit: "Life cover for ₹436/year", fit: "Worth checking if family depends on your earnings." }
       ];
     case "farmer_seasonal":
       return [
-        { name: "PM Kisan", benefit: "Rs 6,000/year for eligible farmers", fit: "This is usually the first scheme worth checking for farm-linked households." },
+        { name: "PM Kisan", benefit: "₹6,000/year for eligible farmers", fit: "This is usually the first scheme worth checking for farm-linked households." },
         { name: "PMSBY", benefit: "Low-cost accident protection", fit: "Useful baseline cover for seasonal and field-work households." },
         { name: "E-Shram", benefit: "Access point for informal worker benefits", fit: "Still worth checking if farm income is mixed with labor income." }
       ];
@@ -621,7 +647,19 @@ export default function HomeScreen() {
       .filter((item) => item.status === "partial" && item.remaining_amount > 0 && isCreditCardDueName(item.name))
       .map((item) => buildCreditCardOutstandingWatchout(language, item.remaining_amount)) ?? [];
   const dueSoonWatchouts = cashflow ? buildDueSoonWatchouts(language, cashflow.protected_due_items) : [];
-  const allWatchouts = Array.from(new Set([...dueSoonWatchouts, ...creditCardOutstandingWatchouts, ...(cashflow?.watchouts ?? [])]));
+  const serverWatchouts = (cashflow?.watchouts ?? []).filter((alert) => !isRedundantDueWatchout(alert));
+  const mergedWatchouts = [...dueSoonWatchouts, ...creditCardOutstandingWatchouts, ...serverWatchouts];
+  const dedupedWatchouts: string[] = [];
+  const seenWatchouts = new Set<string>();
+  for (const alert of mergedWatchouts) {
+    const key = normalizeWatchoutKey(alert);
+    if (seenWatchouts.has(key)) {
+      continue;
+    }
+    seenWatchouts.add(key);
+    dedupedWatchouts.push(alert);
+  }
+  const allWatchouts = dedupedWatchouts;
   const heroValue = cashflow
     ? cashflow.shortfall_amount > 0
       ? formatMoney(cashflow.shortfall_amount)
@@ -780,7 +818,13 @@ export default function HomeScreen() {
 
           {whyNowLine ? (
             <View style={[commonStyles.card, styles.whyNowCard]}>
-              <Text style={styles.whyNowTitle}>{t(language, "whyNowTitle")}</Text>
+              <Text style={styles.whyNowTitle}>
+                {buildWhyNowTitle(language, {
+                  status: cashflow.status,
+                  safeToSpend: cashflow.safe_to_spend,
+                  shortfall: cashflow.shortfall_amount
+                })}
+              </Text>
               <Text style={styles.whyNowBody}>{whyNowLine}</Text>
             </View>
           ) : null}
@@ -794,72 +838,84 @@ export default function HomeScreen() {
             </View>
           ) : null}
 
-          <View style={styles.metricGrid}>
-            <View style={[commonStyles.card, styles.metricCard, styles.metricCardUnified, styles.metricGridItem]}>
-              <View style={styles.metricHeaderSimple}>
+          <View style={styles.metricStack}>
+            <View style={[commonStyles.card, styles.metricCard, styles.metricCardUnified, styles.metricWideCard]}>
+              <View style={styles.dailyReserveHeader}>
                 <Text style={styles.metricLabel}>
-                {cashflow.daily_needs_required > 0 && cashflow.daily_needs_buffer <= 0
-                  ? t(language, "dailyNeedsToProtect")
-                  : t(language, "dailyNeedsCovered")}
-                </Text>
-              </View>
-              <Text style={styles.metricValue}>
-                {formatMoney(cashflow.daily_needs_required > 0 && cashflow.daily_needs_buffer <= 0 ? cashflow.daily_needs_required : cashflow.daily_needs_buffer)}
-              </Text>
-              <Text style={styles.metricHelper}>
-                {cashflow.daily_needs_required <= 0
-                  ? homeCopy.needsEstimateLater
-                  : cashflow.daily_needs_buffer <= 0
-                    ? homeCopy.neededBeforeNextMoney
-                    : cashflow.daily_needs_buffer >= cashflow.daily_needs_required
-                    ? homeCopy.fullyCoveredTillNextIncome
-                      : homeCopy.ofNeededTillNextIncome(formatMoney(cashflow.daily_needs_required))}
-                {cashflow.baseline_daily_spend > 0 ? ` · ${formatMoney(cashflow.baseline_daily_spend)}/day` : ""}
-              </Text>
-              <Pressable
-                accessibilityRole="button"
-                onPress={() => router.push("/edit-daily-needs")}
-                style={({ pressed }) => [styles.metricFooterAction, pressed ? styles.metricFooterActionPressed : null]}
-              >
-                <Text style={styles.metricFooterActionText}>{dailyEditLabel(language)}</Text>
-              </Pressable>
-            </View>
-            <View style={[commonStyles.card, styles.metricCard, styles.metricCardUnified, styles.metricGridItem]}>
-              <Text style={styles.metricLabel}>{dataMode === "real" ? t(language, "bankSeen") : t(language, "bankSeenSample")}</Text>
-              <Text style={styles.metricValue}>{formatMoney(cashflow.working_bank_balance || displayedBankSeen)}</Text>
-              <Text style={styles.metricHelper}>
-                {dataMode !== "real"
-                  ? t(language, "bankSeenSampleHelper")
-                  : cashflow.liquid_balance < 0
-                    ? homeCopy.bankSeenNegativeHelper
-                    : homeCopy.bankSeenHelper}
-              </Text>
-              <Pressable
-                accessibilityRole="button"
-                onPress={() => router.push("/edit-bank-balance" as never)}
-                style={({ pressed }) => [styles.metricFooterAction, pressed ? styles.metricFooterActionPressed : null]}
-              >
-                <Text style={styles.metricFooterActionText}>{t(language, "bankConfirmEdit")}</Text>
-              </Pressable>
-            </View>
-            {profile.tracks_cash ? (
-              <View style={[commonStyles.card, styles.metricCard, styles.metricCardUnified, styles.metricGridItem]}>
-                <Text style={styles.metricLabel}>{t(language, "cashWithYou")}</Text>
-                <Text style={styles.metricValue}>{cashflow.cash_is_stale ? "—" : formatMoney(cashflow.cash_on_hand)}</Text>
-                <Text style={styles.metricHelper}>
-                  {cashflow.cash_is_stale
-                    ? `${t(language, "staleCashUnknown")}${staleCashDays !== null ? ` · ${staleCashDays}d ago` : ""}`
-                    : homeCopy.cashOnHandHelper}
+                  {cashflow.daily_needs_required > 0 && cashflow.daily_needs_buffer <= 0
+                    ? t(language, "dailyNeedsToProtect")
+                    : t(language, "dailyNeedsCovered")}
                 </Text>
                 <Pressable
                   accessibilityRole="button"
-                  onPress={() => router.push({ pathname: "/add-entry", params: { mode: "cash_set" } })}
+                  onPress={() => router.push("/edit-daily-needs")}
+                  style={({ pressed }) => [styles.dailyReserveEdit, pressed ? styles.metricFooterActionPressed : null]}
+                >
+                  <Text style={styles.dailyReserveEditText}>{dailyEditLabel(language)}</Text>
+                </Pressable>
+              </View>
+              <View style={styles.dailyReserveBody}>
+                <View style={styles.dailyReserveMain}>
+                  <Text style={styles.metricValue}>
+                    {formatMoney(cashflow.daily_needs_required > 0 && cashflow.daily_needs_buffer <= 0 ? cashflow.daily_needs_required : cashflow.daily_needs_buffer)}
+                  </Text>
+                  <Text style={styles.metricHelper}>
+                    {cashflow.daily_needs_required <= 0
+                      ? homeCopy.needsEstimateLater
+                      : cashflow.daily_needs_buffer <= 0
+                        ? homeCopy.neededBeforeNextMoney
+                        : cashflow.daily_needs_buffer >= cashflow.daily_needs_required
+                        ? homeCopy.fullyCoveredTillNextIncome
+                          : homeCopy.ofNeededTillNextIncome(formatMoney(cashflow.daily_needs_required))}
+                  </Text>
+                </View>
+                {cashflow.baseline_daily_spend > 0 ? (
+                  <View style={styles.dailyRateBox}>
+                    <Text style={styles.dailyRateLabel}>Per day</Text>
+                    <Text style={styles.dailyRateValue}>{formatMoney(cashflow.baseline_daily_spend)}</Text>
+                  </View>
+                ) : null}
+              </View>
+            </View>
+
+            <View style={styles.metricRow}>
+              <View style={[commonStyles.card, styles.metricCard, styles.metricCardUnified, profile.tracks_cash ? styles.metricHalfCard : styles.metricWideCard]}>
+                <Text style={styles.metricLabel}>{dataMode === "real" ? t(language, "bankSeen") : t(language, "bankSeenSample")}</Text>
+                <Text style={styles.metricValue}>{formatMoney(cashflow.working_bank_balance || displayedBankSeen)}</Text>
+                <Text style={styles.metricHelper}>
+                  {dataMode !== "real"
+                    ? t(language, "bankSeenSampleHelper")
+                    : cashflow.liquid_balance < 0
+                      ? homeCopy.bankSeenNegativeHelper
+                      : homeCopy.bankSeenHelper}
+                </Text>
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() => router.push("/edit-bank-balance" as never)}
                   style={({ pressed }) => [styles.metricFooterAction, pressed ? styles.metricFooterActionPressed : null]}
                 >
                   <Text style={styles.metricFooterActionText}>{t(language, "bankConfirmEdit")}</Text>
                 </Pressable>
               </View>
-            ) : null}
+              {profile.tracks_cash ? (
+                <View style={[commonStyles.card, styles.metricCard, styles.metricCardUnified, styles.metricHalfCard]}>
+                  <Text style={styles.metricLabel}>{t(language, "cashWithYou")}</Text>
+                  <Text style={styles.metricValue}>{cashflow.cash_is_stale ? "—" : formatMoney(cashflow.cash_on_hand)}</Text>
+                  <Text style={styles.metricHelper}>
+                    {cashflow.cash_is_stale
+                      ? `${t(language, "staleCashUnknown")}${staleCashDays !== null ? ` · ${staleCashDays}d ago` : ""}`
+                      : homeCopy.cashOnHandHelper}
+                  </Text>
+                  <Pressable
+                    accessibilityRole="button"
+                    onPress={() => router.push({ pathname: "/add-entry", params: { mode: "cash_set" } })}
+                    style={({ pressed }) => [styles.metricFooterAction, pressed ? styles.metricFooterActionPressed : null]}
+                  >
+                    <Text style={styles.metricFooterActionText}>{t(language, "bankConfirmEdit")}</Text>
+                  </Pressable>
+                </View>
+              ) : null}
+            </View>
           </View>
 
           <View style={[commonStyles.card, commonStyles.shadow, styles.requiredCard]}>
@@ -1014,11 +1070,14 @@ export default function HomeScreen() {
         {allWatchouts.length ? (
           allWatchouts.map((alert) => (
             <View key={alert} style={[commonStyles.card, styles.alertCard]}>
+              <View style={styles.alertIconWrap}>
+                <Ionicons name="warning-outline" size={18} color={theme.colors.warning} />
+              </View>
               <Text style={styles.alertText}>{alert}</Text>
             </View>
           ))
         ) : (
-          <EmptyStateCard title="No watchouts yet" body="Once statement data is in, this area will call out dues, shortfalls, and where to stay careful." />
+          <EmptyStateCard title="No urgent watchouts" body="Dues and reserves are already covered in the sections above." />
         )}
       </View>
 
@@ -1282,9 +1341,11 @@ const styles = StyleSheet.create({
     lineHeight: 24,
     color: theme.colors.textMuted
   },
-  metricGrid: {
+  metricStack: {
+    gap: theme.spacing.md
+  },
+  metricRow: {
     flexDirection: "row",
-    flexWrap: "wrap",
     gap: theme.spacing.md
   },
   nextStepCard: {
@@ -1371,11 +1432,61 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#E6E9E5"
   },
-  metricGridItem: {
-    width: "48%"
+  metricWideCard: {
+    flex: 1
+  },
+  metricHalfCard: {
+    flex: 1
   },
   metricHeaderSimple: {
     marginBottom: 2
+  },
+  dailyReserveHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: theme.spacing.md
+  },
+  dailyReserveBody: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    justifyContent: "space-between",
+    gap: theme.spacing.md
+  },
+  dailyReserveMain: {
+    flex: 1,
+    gap: theme.spacing.xs
+  },
+  dailyReserveEdit: {
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 999,
+    backgroundColor: "#E8F4EF"
+  },
+  dailyReserveEditText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: theme.colors.primary
+  },
+  dailyRateBox: {
+    minWidth: 96,
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    backgroundColor: "#F4F0E7",
+    alignItems: "flex-end"
+  },
+  dailyRateLabel: {
+    fontSize: 11,
+    color: theme.colors.textMuted,
+    textTransform: "uppercase",
+    letterSpacing: 0.6
+  },
+  dailyRateValue: {
+    marginTop: 2,
+    fontSize: 17,
+    fontWeight: "800",
+    color: theme.colors.text
   },
   metricFooterAction: {
     alignSelf: "flex-start",
@@ -1528,9 +1639,24 @@ const styles = StyleSheet.create({
     color: theme.colors.textMuted
   },
   alertCard: {
-    paddingVertical: theme.spacing.md
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: theme.spacing.sm,
+    paddingVertical: theme.spacing.md,
+    backgroundColor: "#FFF8EA",
+    borderWidth: 1,
+    borderColor: "#F2D79B"
+  },
+  alertIconWrap: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#FFF1C7"
   },
   alertText: {
+    flex: 1,
     fontSize: theme.typography.body,
     lineHeight: 22,
     color: theme.colors.text
