@@ -12,7 +12,7 @@ import { commonStyles, theme } from "../theme";
 
 function formatMoney(amount: number | null | undefined) {
   const safeAmount = Number.isFinite(amount) ? Number(amount) : 0;
-  return `Rs ${Math.round(safeAmount).toLocaleString("en-IN")}`;
+  return `₹${Math.round(safeAmount).toLocaleString("en-IN")}`;
 }
 
 function isThisWeek(dateString: string) {

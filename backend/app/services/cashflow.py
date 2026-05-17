@@ -721,11 +721,10 @@ def build_cashflow_summary(db: Session, user_id: str, as_of: date | None = None)
         .all()
     )
     paid_pattern_due_amounts = _pattern_due_payments(db, user_id, cycle_start, as_of_date)
-    pattern_due_total, due_labels, due_watchouts, forgotten_subscriptions, pattern_due_items = _fixed_due_estimate(
+    pattern_due_total, due_labels, _due_watchouts, forgotten_subscriptions, pattern_due_items = _fixed_due_estimate(
         rows, as_of_date, cycle_start, days_until_income, paid_pattern_due_amounts
     )
     manual_due_items = _manual_due_items(db, user_id, cycle_start, as_of_date, next_income_date)
-    manual_due_watchouts = _manual_upcoming_due_watchouts(db, user_id, as_of_date, next_income_date)
     manual_card_due_total = _manual_card_due_activity(db, user_id, cycle_start, as_of_date)
 
     # Pattern dues are now pending confirmation - don't count them in protected_dues
@@ -857,14 +856,10 @@ def build_cashflow_summary(db: Session, user_id: str, as_of: date | None = None)
         watchouts.append(f"Protect essentials till {next_income_label}. Avoid big spends this week.")
     elif status == "tight":
         watchouts.append(f"Money is getting tight till {next_income_label}. Slow optional spending for a few days.")
-    elif safe_to_invest == 0:
-        watchouts.append("Keep money flexible for now. Savings are safer than locking money away this week.")
     if confidence != "high":
         watchouts.append("This answer is still an estimate. Keep a little extra buffer this week.")
     if business_reserve > 0:
         watchouts.append("Some money is being protected first for business running costs.")
-    if not watchouts:
-        watchouts.append(f"You're steady till {next_income_label}. Keep dues protected and avoid unnecessary big spends.")
 
     protected_due_items = sorted(
         [*manual_due_items, *pattern_due_items],
@@ -881,10 +876,9 @@ def build_cashflow_summary(db: Session, user_id: str, as_of: date | None = None)
             urgent_due_watchouts.append(
                 f"{item.name} due in {days_left} day{'s' if days_left != 1 else ''}: {_fmt_money(item.remaining_amount)}."
             )
-    due_watchouts_combined = [*urgent_due_watchouts, *manual_due_watchouts, *due_watchouts]
-    if due_watchouts_combined:
-        # Keep the list concise and avoid duplicate lines.
-        unique_due_watchouts = list(dict.fromkeys(due_watchouts_combined))
+    if urgent_due_watchouts:
+        # Watchouts should stay actionable. The full due list already lives in Keep Aside First.
+        unique_due_watchouts = list(dict.fromkeys(urgent_due_watchouts))
         watchouts = [*unique_due_watchouts[:3], *watchouts]
 
     return CashflowSummaryResponse(

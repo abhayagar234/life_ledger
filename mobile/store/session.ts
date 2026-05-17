@@ -7,7 +7,6 @@ import {
   getCashflowSummary,
   listLedgerEntries,
   getMonthlySummary,
-  getProfile,
   getSpendingSummary,
   listInsights,
   upsertProfile
@@ -68,7 +67,7 @@ type SessionStore = {
   markHydrated: () => void;
   setDraft: (patch: Partial<OnboardingDraft>) => void;
   bootstrapSession: () => Promise<void>;
-  refreshDashboard: () => Promise<void>;
+  refreshDashboard: (options?: { includeSecondary?: boolean }) => Promise<void>;
   saveOnboarding: () => Promise<ProfileRead>;
   startFreshDemo: () => Promise<void>;
   markHasRealData: () => void;
@@ -170,6 +169,13 @@ let dashboardRefreshInFlight: Promise<void> | null = null;
 let lastDashboardRefreshAt = 0;
 const DASHBOARD_REFRESH_DEBOUNCE_MS = 1500;
 
+async function createBackendSession(displayName: string) {
+  return demoLogin({
+    display_name: displayName || createDemoDisplayName(),
+    force_new: true
+  });
+}
+
 export const useSessionStore = create<SessionStore>()(
   persist(
     (set, get) => ({
@@ -200,65 +206,22 @@ export const useSessionStore = create<SessionStore>()(
         if (state.loading) {
           return;
         }
-        set({ loading: true, error: null });
-        try {
-          // Always start fresh on app launch - clear persisted userId and profile, force onboarding
-          let userId: string | null = null;
-          let displayName = createDemoDisplayName();
 
-          set((state) => ({
-            displayName,
-            userId: null,
-            profile: null,
-            onboardingCompleted: false,
-            hasRealData: false,
-            dataMode: "empty",
-            dashboard: createEmptyDashboard(),
-            onboardingDraft: {
-              ...createDefaultDraft(),
-              displayName
-            }
-          }));
-
-          const login = await demoLogin({ display_name: displayName, force_new: true });
-          userId = login.user_id;
-          displayName = login.display_name;
-          set({ userId, displayName });
-
-          const profile = await getProfile(userId);
-          set((currentState) => ({
-            profile,
-            displayName,
-            onboardingCompleted: currentState.onboardingCompleted && Boolean(profile),
-            onboardingDraft: profile
-              ? {
-                  displayName,
-                  preferredLanguage: currentState.onboardingDraft.preferredLanguage,
-                  userType: profile.user_type,
-                  incomePattern: profile.income_pattern,
-                  nextIncomeInDays: profile.next_income_in_days ? String(profile.next_income_in_days) : "",
-                  tracksCash: profile.tracks_cash,
-                  tracksLoans: profile.tracks_loans,
-                  tracksEmi: profile.tracks_emi,
-                  trackingScope: normalizeTrackingScope(profile.tracking_scope),
-                  startCashAmount: profile.start_cash_amount ? String(profile.start_cash_amount) : "",
-                  salaryDayOfMonth: profile.salary_day_of_month ? String(profile.salary_day_of_month) : "",
-                  businessModeEnabled: profile.business_mode_enabled,
-                  moneyMixType: profile.money_mix_type,
-                  receivesSalaryBesidesBusiness: profile.receives_salary_besides_business,
-                  businessReserveAmount: profile.business_reserve_amount ? String(profile.business_reserve_amount) : ""
-                }
-              : currentState.onboardingDraft
-          }));
-
-          if (profile) {
-            await get().refreshDashboard();
-          }
-        } catch (error) {
-          set({ error: error instanceof Error ? error.message : "Could not start your session." });
-        } finally {
-          set({ loading: false });
+        if (state.userId && state.profile) {
+          set({ error: null });
+          void get().refreshDashboard({ includeSecondary: false });
+          return;
         }
+
+        set((currentState) => ({
+          loading: false,
+          error: null,
+          displayName: currentState.displayName || createDemoDisplayName(),
+          onboardingDraft: {
+            ...currentState.onboardingDraft,
+            displayName: currentState.onboardingDraft.displayName || currentState.displayName || createDemoDisplayName()
+          }
+        }));
       },
       startFreshDemo: async () => {
         const fallbackName = createDemoDisplayName();
@@ -303,11 +266,12 @@ export const useSessionStore = create<SessionStore>()(
           set({ loading: false });
         }
       },
-      refreshDashboard: async () => {
+      refreshDashboard: async (options = {}) => {
         const { userId } = get();
         if (!userId) {
           return;
         }
+        const includeSecondary = options.includeSecondary ?? true;
         const now = Date.now();
         if (dashboardRefreshInFlight) {
           return dashboardRefreshInFlight;
@@ -319,19 +283,26 @@ export const useSessionStore = create<SessionStore>()(
         dashboardRefreshInFlight = (async () => {
           try {
             const { year, month } = currentPeriod();
-            const secondaryResultsPromise = Promise.allSettled([
-              getMonthlySummary(userId, year, month),
-              getSpendingSummary(userId, year, month),
-              listInsights(userId, year, month),
-              listLedgerEntries(userId, 5)
-            ]);
+            const cashflowSummary = await getCashflowSummary(userId);
 
-            const [cashflowSummary, secondaryResults] = await Promise.all([
-              getCashflowSummary(userId),
-              secondaryResultsPromise
-            ]);
+            if (!includeSecondary) {
+              set((state) => ({
+                dashboard: {
+                  ...state.dashboard,
+                  cashflowSummary
+                },
+                error: null
+              }));
+              return;
+            }
+
             const [monthlySummaryResult, spendingSummaryResult, insightCardsResult, ledgerEntriesResult] =
-              secondaryResults;
+              await Promise.allSettled([
+                getMonthlySummary(userId, year, month),
+                getSpendingSummary(userId, year, month),
+                listInsights(userId, year, month),
+                listLedgerEntries(userId, 5)
+              ]);
 
             const optionalErrors = [monthlySummaryResult, spendingSummaryResult, insightCardsResult, ledgerEntriesResult].filter(
               (result): result is PromiseRejectedResult => result.status === "rejected"
@@ -360,10 +331,8 @@ export const useSessionStore = create<SessionStore>()(
         return dashboardRefreshInFlight;
       },
       saveOnboarding: async () => {
-        const { userId, onboardingDraft } = get();
-        if (!userId) {
-          throw new Error("Missing demo session.");
-        }
+        let { userId } = get();
+        const { onboardingDraft } = get();
         if (!onboardingDraft.userType) {
           throw new Error("Please finish the setup first.");
         }
@@ -377,6 +346,12 @@ export const useSessionStore = create<SessionStore>()(
 
         set({ savingOnboarding: true, error: null });
         try {
+          if (!userId) {
+            const login = await createBackendSession(onboardingDraft.displayName || createDemoDisplayName());
+            userId = login.user_id;
+            set({ userId, displayName: login.display_name });
+          }
+
           const payload: ProfileOnboardingUpdate = {
             display_name: onboardingDraft.displayName || "MoneyOS User",
             user_type: onboardingDraft.userType,
@@ -400,7 +375,7 @@ export const useSessionStore = create<SessionStore>()(
             onboardingCompleted: true,
             displayName: payload.display_name
           });
-          await get().refreshDashboard();
+          void get().refreshDashboard({ includeSecondary: false });
           return profile;
         } catch (error) {
           set({ error: error instanceof Error ? error.message : "Could not save your setup." });
@@ -420,6 +395,10 @@ export const useSessionStore = create<SessionStore>()(
         hasRealData: state.hasRealData,
         dataMode: state.dataMode,
         profile: state.profile,
+        dashboard: {
+          ...createEmptyDashboard(),
+          cashflowSummary: state.dashboard.cashflowSummary
+        },
         onboardingDraft: state.onboardingDraft
       }),
       onRehydrateStorage: () => (state) => {

@@ -1,4 +1,5 @@
 import { StyleSheet, Text, View } from "react-native";
+import { useEffect } from "react";
 
 import { AppScreen } from "../../components/AppScreen";
 import { EmptyStateCard } from "../../components/EmptyStateCard";
@@ -7,6 +8,13 @@ import { commonStyles, theme } from "../../theme";
 
 export default function InsightsScreen() {
   const spendingSummary = useSessionStore((state) => state.dashboard.spendingSummary);
+  const refreshDashboard = useSessionStore((state) => state.refreshDashboard);
+
+  useEffect(() => {
+    if (!spendingSummary) {
+      void refreshDashboard({ includeSecondary: true });
+    }
+  }, [refreshDashboard, spendingSummary]);
 
   return (
     <AppScreen title="Insights" subtitle="Grouped spending first, plain language always.">
@@ -14,7 +22,7 @@ export default function InsightsScreen() {
         <>
           <View style={[commonStyles.card, styles.hero]}>
             <Text style={styles.heroLabel}>This Period</Text>
-            <Text style={styles.heroValue}>Rs {Math.round(spendingSummary.total_spend).toLocaleString("en-IN")}</Text>
+            <Text style={styles.heroValue}>₹{Math.round(spendingSummary.total_spend).toLocaleString("en-IN")}</Text>
             <Text style={styles.heroBody}>Tracked spending with flexible and fixed buckets ready for the next charts step.</Text>
           </View>
           {spendingSummary.top_categories.map((category) => (
@@ -23,7 +31,7 @@ export default function InsightsScreen() {
                 <Text style={styles.rowTitle}>{category.category.replace(/_/g, " ")}</Text>
                 <Text style={styles.rowSub}>{category.percentage}% of spend</Text>
               </View>
-              <Text style={styles.rowAmount}>Rs {Math.round(category.amount).toLocaleString("en-IN")}</Text>
+              <Text style={styles.rowAmount}>₹{Math.round(category.amount).toLocaleString("en-IN")}</Text>
             </View>
           ))}
         </>

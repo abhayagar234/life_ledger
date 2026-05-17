@@ -31,7 +31,7 @@ export type DashboardContent = {
 
 function formatMoney(amount: number | null | undefined) {
   const safeAmount = Math.round(amount ?? 0);
-  return `Rs ${safeAmount.toLocaleString("en-IN")}`;
+  return `₹${safeAmount.toLocaleString("en-IN")}`;
 }
 
 function resolveUserType(profile?: ProfileRead | null): UserType {

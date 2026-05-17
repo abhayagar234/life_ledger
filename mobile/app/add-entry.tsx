@@ -114,7 +114,7 @@ function formatEditableAmount(amount: number | null) {
 
 function formatMoney(amount: number | null | undefined) {
   const safeAmount = Number.isFinite(amount) ? Number(amount) : 0;
-  return `Rs ${Math.round(safeAmount).toLocaleString("en-IN")}`;
+  return `₹${Math.round(safeAmount).toLocaleString("en-IN")}`;
 }
 
 type DuePrefill = {
@@ -592,7 +592,7 @@ export default function AddEntryScreen() {
               placeholder={
                 selected === "cash_received"
                   ? "Example: 500"
-                  : `Cash available now: Rs ${Math.max(Math.round(currentCashOnHand), 0).toLocaleString("en-IN")}`
+                  : `Cash available now: ₹${Math.max(Math.round(currentCashOnHand), 0).toLocaleString("en-IN")}`
               }
               placeholderTextColor={theme.colors.textMuted}
               style={styles.input}
@@ -703,7 +703,7 @@ export default function AddEntryScreen() {
           selected === "business_supplier_expense" ||
           selected === "business_cash_expense"
         ) && source !== "online" && source !== "card" ? (
-          <Text style={styles.noteText}>{`Cash on hand right now: Rs ${Math.round(currentCashOnHand).toLocaleString("en-IN")}`}</Text>
+          <Text style={styles.noteText}>{`Cash on hand right now: ₹${Math.round(currentCashOnHand).toLocaleString("en-IN")}`}</Text>
         ) : null}
         {(
           selected === "cash_spent" ||
@@ -711,7 +711,7 @@ export default function AddEntryScreen() {
           selected === "business_supplier_expense" ||
           selected === "business_cash_expense"
         ) && (source === "online" || source === "split") ? (
-          <Text style={styles.noteText}>{`Bank money right now: Rs ${Math.max(Math.round(currentWorkingBankBalance), 0).toLocaleString("en-IN")}`}</Text>
+          <Text style={styles.noteText}>{`Bank money right now: ₹${Math.max(Math.round(currentWorkingBankBalance), 0).toLocaleString("en-IN")}`}</Text>
         ) : null}
       </View>
 
