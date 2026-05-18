@@ -64,6 +64,7 @@ type SessionStore = {
   displayName: string;
   profile: ProfileRead | null;
   dashboard: DashboardState;
+  dashboardLastUpdatedAt: number;
   onboardingDraft: OnboardingDraft;
   markHydrated: () => void;
   setDraft: (patch: Partial<OnboardingDraft>) => void;
@@ -169,6 +170,7 @@ function currentPeriod() {
 let dashboardRefreshInFlight: Promise<void> | null = null;
 let lastDashboardRefreshAt = 0;
 const DASHBOARD_REFRESH_DEBOUNCE_MS = 1500;
+const DASHBOARD_CACHE_TTL_MS = 60000;
 
 async function createBackendSession(displayName: string) {
   return demoLogin({
@@ -191,6 +193,7 @@ export const useSessionStore = create<SessionStore>()(
       displayName: "MoneyOS User",
       profile: null,
       dashboard: createEmptyDashboard(),
+      dashboardLastUpdatedAt: 0,
       onboardingDraft: createDefaultDraft(),
       markHydrated: () => set({ hydrated: true }),
       markHasRealData: () => set({ hasRealData: true, dataMode: "real" }),
@@ -269,6 +272,7 @@ export const useSessionStore = create<SessionStore>()(
           dashboard: {
             ...createEmptyDashboard()
           },
+          dashboardLastUpdatedAt: 0,
           displayName: fallbackName,
           onboardingDraft: {
               ...createDefaultDraft(),
@@ -299,7 +303,7 @@ export const useSessionStore = create<SessionStore>()(
         }
       },
       refreshDashboard: async (options = {}) => {
-        const { userId } = get();
+        const { dashboard, dashboardLastUpdatedAt, userId } = get();
         if (!userId) {
           set({ error: "Session missing. Please start fresh once from Setup." });
           return;
@@ -312,6 +316,9 @@ export const useSessionStore = create<SessionStore>()(
             return dashboardRefreshInFlight;
           }
           await dashboardRefreshInFlight;
+        }
+        if (!force && dashboard.cashflowSummary && now - dashboardLastUpdatedAt < DASHBOARD_CACHE_TTL_MS) {
+          return;
         }
         if (!force && now - lastDashboardRefreshAt < DASHBOARD_REFRESH_DEBOUNCE_MS && get().dashboard.cashflowSummary) {
           return;
@@ -328,6 +335,7 @@ export const useSessionStore = create<SessionStore>()(
                   ...state.dashboard,
                   cashflowSummary
                 },
+                dashboardLastUpdatedAt: Date.now(),
                 error: null
               }));
               return;
@@ -353,6 +361,7 @@ export const useSessionStore = create<SessionStore>()(
                 cashflowSummary,
                 recentLedgerEntries: ledgerEntriesResult.status === "fulfilled" ? ledgerEntriesResult.value : []
               },
+              dashboardLastUpdatedAt: Date.now(),
               error: optionalErrors.length
                 ? "Some secondary insights could not refresh, but your main cashflow answer is up to date."
                 : null
@@ -436,6 +445,7 @@ export const useSessionStore = create<SessionStore>()(
           ...createEmptyDashboard(),
           cashflowSummary: state.dashboard.cashflowSummary
         },
+        dashboardLastUpdatedAt: state.dashboardLastUpdatedAt,
         onboardingDraft: state.onboardingDraft
       }),
       onRehydrateStorage: () => (state) => {

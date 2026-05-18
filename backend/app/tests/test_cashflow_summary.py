@@ -585,3 +585,37 @@ def test_daily_wage_sample_is_tighter_and_has_no_streaming_subscriptions() -> No
         assert "Netflix Subscription" not in names
         assert "Hotstar Subscription" not in names
         assert summary.safe_to_spend < 3000
+
+
+def test_clean_start_subtracts_daily_basics_from_safe_to_spend() -> None:
+    engine = create_engine("sqlite+pysqlite:///:memory:", future=True)
+    testing_session_local = sessionmaker(bind=engine, class_=Session, autoflush=False, autocommit=False, future=True)
+    Base.metadata.create_all(bind=engine)
+
+    with testing_session_local() as db:
+        user = User(display_name="Clean Start Reserve User")
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+
+        profile = FinancialProfile(
+            user_id=user.id,
+            user_type="family_manager",
+            income_pattern="monthly",
+            tracks_cash=True,
+            tracks_loans=False,
+            tracks_emi=True,
+            tracking_scope="household",
+            currency_code="INR",
+            start_cash_amount=5000,
+            next_income_in_days=5,
+            daily_needs_override=400,
+            business_mode_enabled=False,
+        )
+        db.add(profile)
+        db.commit()
+
+        summary = build_cashflow_summary(db, user.id, as_of=date.today())
+
+        assert summary.daily_needs_required == 2000
+        assert summary.safe_to_spend == 3000

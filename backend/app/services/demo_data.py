@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from calendar import monthrange
 from datetime import date
 from uuid import uuid4
 
@@ -15,6 +16,7 @@ from app.models.monthly_summary import MonthlySummary
 from app.models.normalized_transaction import NormalizedTransaction
 
 DemoTxn = tuple[date, float, str, str, str, bool, bool]
+DEMO_CONFIRMED_DUE_CATEGORIES = {"rent", "emi_loans", "bills", "subscriptions", "credit_card_payment", "education"}
 
 
 def _month_offset(base: date, delta: int) -> date:
@@ -28,6 +30,18 @@ def _month_offset(base: date, delta: int) -> date:
         year += 1
     day = min(base.day, 28)
     return date(year, month, day)
+
+
+def _safe_demo_due_date(year: int, month: int, day: int) -> date:
+    return date(year, month, min(day, monthrange(year, month)[1]))
+
+
+def _next_demo_due_date(today: date, day: int) -> date:
+    candidate = _safe_demo_due_date(today.year, today.month, day)
+    if candidate >= today:
+        return candidate
+    next_month = _month_offset(today.replace(day=1), 1)
+    return _safe_demo_due_date(next_month.year, next_month.month, day)
 
 
 def _create_txn(
@@ -178,6 +192,42 @@ def _transactions_for_profile(profile: FinancialProfile, month_start: date) -> l
     return _salaried_transactions(month_start)
 
 
+def _seed_demo_confirmed_dues(db: Session, user_id: str, profile: FinancialProfile, today: date) -> None:
+    for txn_date, amount, direction, description, category, fixed_due, recurring in _transactions_for_profile(
+        profile, today.replace(day=1)
+    ):
+        if direction != "debit" or not fixed_due or not recurring or category not in DEMO_CONFIRMED_DUE_CATEGORIES:
+            continue
+
+        due_date = _next_demo_due_date(today, txn_date.day)
+        loan = Loan(
+            user_id=user_id,
+            loan_type="informal_due",
+            counterparty_name=description,
+            principal_amount=amount,
+            interest_type="none",
+            start_date=today,
+            emi_amount=amount,
+            emi_frequency="monthly",
+            status="active",
+            notes="Demo protected due",
+            confirmed=True,
+        )
+        db.add(loan)
+        db.flush()
+        db.add(
+            EMIPayment(
+                user_id=user_id,
+                loan_id=loan.id,
+                due_date=due_date,
+                amount_due=amount,
+                amount_paid=0,
+                status="pending",
+                source_type="demo",
+            )
+        )
+
+
 def seed_demo_financial_data(db: Session, user_id: str) -> None:
     has_rows = db.query(NormalizedTransaction).filter(NormalizedTransaction.user_id == user_id).first()
     if has_rows is not None:
@@ -257,6 +307,7 @@ def seed_demo_financial_data(db: Session, user_id: str) -> None:
             import_file.total_rows += 1
             import_file.imported_rows += 1
 
+    _seed_demo_confirmed_dues(db, user_id, profile, today)
     db.commit()
 
 

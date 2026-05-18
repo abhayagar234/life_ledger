@@ -1,13 +1,15 @@
-import { apiRequest } from "./client";
+import { apiRequest, BACKEND_WAKEUP_MESSAGE, fetchWithRetry } from "./client";
 import type {
   CashflowSummary,
   ConfirmDueItem,
   ConfirmDuesResponse,
+  CategoryHelpCandidate,
   DetectedDueResponse,
   DemoLoginRequest,
   DemoLoginResponse,
   DemoActionResponse,
   FileUploadResponse,
+  ImportCoverageLiteResponse,
   ImportSummaryResponse,
   ImportCoverageResponse,
   CategoryMappingItem,
@@ -23,6 +25,10 @@ import type {
   SpendingInsightsResponse
 } from "./types";
 import { getApiBaseUrl } from "./client";
+
+const IMPORT_PROCESSING_STATUSES = new Set(["processing", "uploaded"]);
+const IMPORT_POLL_INTERVAL_MS = 1800;
+const IMPORT_POLL_TIMEOUT_MS = 120000;
 
 export function demoLogin(payload: DemoLoginRequest) {
   return apiRequest<DemoLoginResponse>("/auth/demo-login", {
@@ -144,20 +150,59 @@ export async function uploadImportFile(
     type: file.mimeType
   } as any);
 
-  const url = new URL("/imports/files", getApiBaseUrl());
+  const url = new URL("/imports/files/async", getApiBaseUrl());
   url.searchParams.set("user_id", userId);
   if (sourceHint) {
     url.searchParams.set("source_hint", sourceHint);
   }
-  const response = await fetch(url.toString(), {
+  const response = await fetchWithRetry(url.toString(), {
     method: "POST",
     body: form
+  }, {
+    timeoutMs: 20000,
+    retries: 1,
+    retryDelayMs: 3000
   });
   if (!response.ok) {
+    if ([502, 503, 504].includes(response.status)) {
+      throw new Error(BACKEND_WAKEUP_MESSAGE);
+    }
     const body = await response.text();
     throw new Error(body || `Request failed with status ${response.status}`);
   }
   return (await response.json()) as FileUploadResponse;
+}
+
+export function getImportFileStatus(userId: string, uploadId: string) {
+  return apiRequest<FileUploadResponse>(`/imports/files/${uploadId}`, {
+    userId
+  });
+}
+
+export function isImportProcessing(status: string) {
+  return IMPORT_PROCESSING_STATUSES.has(status);
+}
+
+function delay(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+export async function waitForImportProcessing(
+  userId: string,
+  uploadId: string,
+  onUpdate?: (status: FileUploadResponse) => void
+) {
+  const startedAt = Date.now();
+  let latest = await getImportFileStatus(userId, uploadId);
+  onUpdate?.(latest);
+
+  while (isImportProcessing(latest.status) && Date.now() - startedAt < IMPORT_POLL_TIMEOUT_MS) {
+    await delay(IMPORT_POLL_INTERVAL_MS);
+    latest = await getImportFileStatus(userId, uploadId);
+    onUpdate?.(latest);
+  }
+
+  return latest;
 }
 
 export function getDetectedDues(userId: string, uploadId: string) {
@@ -169,6 +214,16 @@ export function getDetectedDues(userId: string, uploadId: string) {
 export function getImportSummary(userId: string, uploadId: string) {
   return apiRequest<ImportSummaryResponse>(`/imports/${uploadId}/summary`, {
     userId
+  });
+}
+
+export function getImportCoverageLite(userId: string, uploadIds?: string[]) {
+  const query = uploadIds && uploadIds.length > 0 ? `?upload_ids=${encodeURIComponent(uploadIds.join(","))}` : "";
+  return apiRequest<ImportCoverageLiteResponse>(`/imports/coverage-lite${query}`, {
+    userId,
+    timeoutMs: 20000,
+    retries: 1,
+    retryDelayMs: 3000
   });
 }
 
@@ -184,6 +239,26 @@ export function getImportCoverage(userId: string, uploadIds?: string[]) {
   const query = uploadIds && uploadIds.length > 0 ? `?upload_ids=${encodeURIComponent(uploadIds.join(","))}` : "";
   return apiRequest<ImportCoverageResponse>(`/imports/coverage${query}`, {
     userId
+  });
+}
+
+export function getRecurringDues(userId: string, uploadIds?: string[]) {
+  const query = uploadIds && uploadIds.length > 0 ? `?upload_ids=${encodeURIComponent(uploadIds.join(","))}` : "";
+  return apiRequest<DetectedDueResponse[]>(`/imports/recurring-dues${query}`, {
+    userId,
+    timeoutMs: 20000,
+    retries: 1,
+    retryDelayMs: 3000
+  });
+}
+
+export function getCategoryHelpCandidates(userId: string, uploadIds?: string[]) {
+  const query = uploadIds && uploadIds.length > 0 ? `?upload_ids=${encodeURIComponent(uploadIds.join(","))}` : "";
+  return apiRequest<CategoryHelpCandidate[]>(`/imports/category-help-candidates${query}`, {
+    userId,
+    timeoutMs: 20000,
+    retries: 1,
+    retryDelayMs: 3000
   });
 }
 

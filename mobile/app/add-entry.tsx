@@ -816,7 +816,7 @@ export default function AddEntryScreen() {
               });
             }
             markHasRealData();
-            await refreshDashboard();
+            await refreshDashboard({ force: true });
             Alert.alert(
               "Updated",
               params.recurringDue === "1" && selected === "due_paid"

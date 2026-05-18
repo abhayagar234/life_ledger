@@ -62,8 +62,8 @@ class ConfirmDuesResponse(BaseModel):
 class CategoryHelpCandidate(BaseModel):
     merchant_key: str
     merchant_label: str
-    total_amount: float
-    transaction_count: int
+    suggested_merchant_label: str | None = None
+    suggested_category_code: str | None = None
 
 
 class CategoryMappingItem(BaseModel):
@@ -120,3 +120,21 @@ class ImportCoverageResponse(BaseModel):
     most_spent_amount_current_month: float = 0
     recurring_dues: list[DetectedDueResponse]
     category_help_candidates: list[CategoryHelpCandidate] = []
+
+
+class ImportCoverageLiteResponse(BaseModel):
+    total_uploads: int
+    total_transactions: int
+    date_range: tuple[str, str] | None = None
+    period_days: int | None = None
+    period_months: float | None = None
+    account_coverage: dict[str, int]
+    total_spend: float
+    total_income: float
+    total_upi: float
+    total_cash_withdrawal: float
+    top_categories_overall: dict[str, float] = {}
+    top_merchants_overall: dict[str, float] = {}
+    category_coverage_ratio: float = 0
+    uncategorized_spend_overall: float = 0
+    credit_card_insights: dict[str, str] | None = None

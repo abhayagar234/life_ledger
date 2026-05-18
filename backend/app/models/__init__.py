@@ -1,6 +1,8 @@
 from app.models.budget import Budget
 from app.models.goal import Goal
+from app.models.global_merchant_alias import GlobalMerchantAlias
 from app.models.import_file import ImportFile
+from app.models.import_coverage_cache import ImportCoverageCache
 from app.models.import_row import ImportRow
 from app.models.normalized_transaction import NormalizedTransaction
 from app.models.financial_profile import FinancialProfile
@@ -19,7 +21,9 @@ __all__ = [
     "EMIPayment",
     "Budget",
     "Goal",
+    "GlobalMerchantAlias",
     "ImportFile",
+    "ImportCoverageCache",
     "ImportRow",
     "NormalizedTransaction",
     "MonthlySummary",

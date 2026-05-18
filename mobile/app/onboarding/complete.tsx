@@ -1,6 +1,6 @@
 import { router } from "expo-router";
 import { useMemo } from "react";
-import { ActivityIndicator, StyleSheet, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Alert, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { AppScreen } from "../../components/AppScreen";
 import { Button } from "../../components/Button";
@@ -220,14 +220,27 @@ export default function OnboardingCompleteScreen() {
         label={saving ? t(language, "saving") : t(language, "finishSetup")}
         disabled={saving || !draft.userType}
         onPress={async () => {
+          if (!draft.userType) {
+            router.replace("/onboarding/user-type");
+            return;
+          }
           try {
             await saveOnboarding();
             router.replace("/import-statement");
-          } catch {
+          } catch (error) {
+            Alert.alert("Could not save setup", error instanceof Error ? error.message : "Please try again.");
             return;
           }
         }}
       />
+
+      {!draft.userType ? (
+        <Button
+          label={t(language, "start")}
+          variant="secondary"
+          onPress={() => router.replace("/onboarding/user-type")}
+        />
+      ) : null}
 
       {saving ? (
         <View style={styles.loadingRow}>

@@ -9,6 +9,7 @@ from decimal import Decimal
 from sqlalchemy.orm import Session
 
 from app.models.normalized_transaction import NormalizedTransaction
+from app.services.due_matching import confirmed_due_matches, confirmed_due_signatures, due_amount_bucket, normalize_due_counterparty
 
 
 CONFIRMABLE_DUE_CATEGORIES = {
@@ -66,18 +67,6 @@ INVESTMENT_RECURRING_HINTS = {
     "bpay",
 }
 
-CANONICAL_MERCHANT_HINTS: list[tuple[str, tuple[str, ...]]] = [
-    ("google play", ("google play", "googleplay", "gplay", "play store", "app purchase")),
-    ("netflix", ("netflix", "netflix.com", "netflix en")),
-    ("spotify", ("spotify", "spotify in")),
-    ("youtube", ("youtube", "youtube premium")),
-    ("amazon prime", ("prime video", "amazon prime", "amzn prime")),
-    ("hotstar", ("hotstar", "disney hotstar")),
-    ("hdfc mutual fund", ("hdfc mutua", "hdfc mutual", "hdcamsip", "hdmfipar")),
-    ("icici prudential", ("icici prud", "ipcamsip", "icici prudentia")),
-]
-
-
 @dataclass
 class DetectedDue:
     counterparty_name: str
@@ -91,21 +80,15 @@ class DetectedDue:
 
 
 def _normalize_counterparty(cp: str | None) -> str:
-    if not cp:
-        return ""
-    tokens = [token for token in cp.lower().split() if not any(char.isdigit() for char in token)]
-    return " ".join(tokens[:4]).strip()
+    return normalize_due_counterparty(cp)
 
 def _canonical_counterparty(txn: NormalizedTransaction) -> str:
     description = (txn.description_clean or txn.description_raw or "").lower()
-    for canonical, hints in CANONICAL_MERCHANT_HINTS:
-        if any(hint in description for hint in hints):
-            return canonical
-    return _normalize_counterparty(txn.counterparty_name)
+    return normalize_due_counterparty(f"{txn.counterparty_name or ''} {description}")
 
 
 def _amount_bucket(amount: float) -> float:
-    return round(float(amount) / 50) * 50
+    return due_amount_bucket(amount)
 
 
 def _median_amount(txns: list[NormalizedTransaction]) -> float:
@@ -185,6 +168,7 @@ def extract_detected_dues(
     elif upload_id is not None:
         query = query.filter(NormalizedTransaction.import_file_id == upload_id)
     transactions = query.order_by(NormalizedTransaction.transaction_date.asc()).all()
+    existing_confirmed_dues = confirmed_due_signatures(db, user_id)
 
     groups: dict[tuple[str, float], list[NormalizedTransaction]] = {}
 
@@ -244,6 +228,14 @@ def extract_detected_dues(
             continue
 
         counterparty = txns[0].counterparty_name or cp_norm
+        if confirmed_due_matches(
+            existing_confirmed_dues,
+            counterparty=f"{counterparty} {txns[0].description_clean or txns[0].description_raw or ''}",
+            amount=amount,
+            frequency=frequency,
+        ):
+            continue
+
         category = txns[0].category_code or "uncategorized"
         transaction_ids = [str(t.id) for t in txns]
         sample_dates = [d.isoformat() for d in dates[-5:]]

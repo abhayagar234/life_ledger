@@ -299,11 +299,29 @@ export type ImportCoverageResponse = {
   category_help_candidates?: CategoryHelpCandidate[];
 };
 
+export type ImportCoverageLiteResponse = {
+  total_uploads: number;
+  total_transactions: number;
+  date_range?: [string, string] | null;
+  period_days?: number | null;
+  period_months?: number | null;
+  account_coverage: Record<string, number>;
+  total_spend: number;
+  total_income: number;
+  total_upi: number;
+  total_cash_withdrawal: number;
+  top_categories_overall?: Record<string, number>;
+  top_merchants_overall?: Record<string, number>;
+  category_coverage_ratio?: number;
+  uncategorized_spend_overall?: number;
+  credit_card_insights?: Record<string, string> | null;
+};
+
 export type CategoryHelpCandidate = {
   merchant_key: string;
   merchant_label: string;
-  total_amount: number;
-  transaction_count: number;
+  suggested_merchant_label?: string | null;
+  suggested_category_code?: string | null;
 };
 
 export type CategoryMappingItem = {
