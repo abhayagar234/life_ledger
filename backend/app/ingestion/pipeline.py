@@ -40,6 +40,14 @@ class ParsedTabularFile:
     header_row_index: int
 
 
+@dataclass
+class PreparedImportFile:
+    parsed_file: ParsedTabularFile
+    mapping: dict[str, str]
+    source_name: str
+    source_type: str
+
+
 def compute_file_hash(content: bytes) -> str:
     return hashlib.sha256(content).hexdigest()
 
@@ -117,46 +125,142 @@ def _json_safe_row(raw_row: dict) -> dict[str, object]:
     return {str(key): _json_safe_value(value) for key, value in raw_row.items()}
 
 
-def process_import_file(
+def build_file_upload_response(
+    import_file: ImportFile,
+    *,
+    message: str,
+    status: str | None = None,
+    selected_sheet: str | None = None,
+    header_row_index: int | None = None,
+    error_samples: list[str] | None = None,
+    preview: list[ImportPreviewRow] | None = None,
+) -> FileUploadResponse:
+    return FileUploadResponse(
+        upload_id=import_file.id,
+        file_name=import_file.file_name,
+        source_name=import_file.source_name,
+        source_type=import_file.source_type,
+        file_type=import_file.file_type,
+        selected_sheet=selected_sheet,
+        header_row_index=header_row_index,
+        status=status or import_file.status,
+        message=message,
+        total_rows=import_file.total_rows,
+        imported_rows=import_file.imported_rows,
+        duplicate_rows=import_file.duplicate_rows,
+        error_rows=import_file.error_rows,
+        error_samples=error_samples or [],
+        preview=preview or [],
+        uploaded_at=import_file.uploaded_at,
+    )
+
+
+def build_import_file_status_response(
+    db: Session,
+    import_file: ImportFile,
+    *,
+    message: str | None = None,
+) -> FileUploadResponse:
+    preview_transactions = (
+        db.query(NormalizedTransaction)
+        .filter(
+            NormalizedTransaction.user_id == import_file.user_id,
+            NormalizedTransaction.import_file_id == import_file.id,
+        )
+        .order_by(NormalizedTransaction.transaction_date.desc())
+        .limit(5)
+        .all()
+    )
+    preview = [
+        ImportPreviewRow(
+            transaction_date=txn.transaction_date.isoformat(),
+            amount=float(txn.amount),
+            direction=txn.direction,
+            description_clean=txn.description_clean,
+            dedupe_status=txn.dedupe_status,
+        )
+        for txn in preview_transactions
+    ]
+    default_message = {
+        "processing": "Statement processing is still running.",
+        "processed": "Statement is ready.",
+        "needs_review": "Statement could not be processed automatically.",
+        "duplicate_file": "This file has already been imported for this user.",
+    }.get(import_file.status, "Statement status loaded.")
+    return build_file_upload_response(
+        import_file,
+        message=message or default_message,
+        error_samples=[message or default_message] if import_file.status == "needs_review" else [],
+        preview=preview,
+    )
+
+
+def find_existing_import_file(db: Session, *, user_id: str, file_hash: str) -> ImportFile | None:
+    return (
+        db.query(ImportFile)
+        .filter(ImportFile.user_id == user_id, ImportFile.file_hash == file_hash)
+        .order_by(ImportFile.uploaded_at.desc())
+        .first()
+    )
+
+
+def create_processing_import_record(
     db: Session,
     *,
     user_id: str,
     file_name: str,
     file_type: str,
-    content: bytes,
-    force_reprocess: bool = True,
+    file_hash: str,
     source_hint: str | None = None,
-) -> FileUploadResponse:
-    file_hash = compute_file_hash(content)
-    existing_file = (
-        db.query(ImportFile)
-        .filter(ImportFile.user_id == user_id, ImportFile.file_hash == file_hash)
-        .first()
+) -> ImportFile:
+    source_type = source_hint if source_hint in {"bank", "card", "other"} else "other"
+    import_file = ImportFile(
+        user_id=user_id,
+        file_name=file_name,
+        file_type=file_type,
+        source_name="pending_detection",
+        source_type=source_type,
+        file_hash=file_hash,
+        status="processing",
+        total_rows=0,
     )
-    if existing_file is not None:
-        if force_reprocess:
-            db.delete(existing_file)
-            db.flush()
-        else:
-            return FileUploadResponse(
-                upload_id=existing_file.id,
-                file_name=existing_file.file_name,
-                source_name=existing_file.source_name,
-                source_type=existing_file.source_type,
-                file_type=existing_file.file_type,
-                selected_sheet=None,
-                header_row_index=None,
-                status="duplicate_file",
-                message="This file has already been imported for this user.",
-                total_rows=existing_file.total_rows,
-                imported_rows=existing_file.imported_rows,
-                duplicate_rows=existing_file.duplicate_rows,
-                error_rows=existing_file.error_rows,
-                error_samples=[],
-                preview=[],
-                uploaded_at=existing_file.uploaded_at,
-            )
+    db.add(import_file)
+    db.commit()
+    db.refresh(import_file)
+    return import_file
 
+
+def mark_import_file_failed(
+    db: Session,
+    *,
+    import_file_id: str,
+    failure_message: str,
+) -> FileUploadResponse | None:
+    import_file = db.get(ImportFile, import_file_id)
+    if import_file is None:
+        return None
+
+    import_file.status = "needs_review"
+    import_file.imported_rows = 0
+    import_file.duplicate_rows = 0
+    import_file.error_rows = 1
+    import_file.processed_at = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(import_file)
+    return build_file_upload_response(
+        import_file,
+        message=failure_message,
+        error_samples=[failure_message],
+    )
+
+
+def prepare_import_file(
+    *,
+    file_name: str,
+    file_type: str,
+    content: bytes,
+    source_hint: str | None = None,
+) -> PreparedImportFile:
     parsed_file = read_rows_for_file_type(file_type, content)
 
     if not parsed_file.headers or not parsed_file.rows:
@@ -173,17 +277,27 @@ def process_import_file(
     if not mapping.get("transaction_date"):
         raise ValueError(f"Cannot find transaction date column. Headers found: {', '.join(parsed_file.headers[:10])}. Check that your statement includes transaction dates.")
 
-    import_file = ImportFile(
-        user_id=user_id,
-        file_name=file_name,
-        file_type=file_type,
+    return PreparedImportFile(
+        parsed_file=parsed_file,
+        mapping=mapping,
         source_name=source_name,
         source_type=source_type,
-        file_hash=file_hash,
-        status="processing",
-        total_rows=len(parsed_file.rows),
     )
-    db.add(import_file)
+
+
+def _process_prepared_import_file(
+    db: Session,
+    *,
+    import_file: ImportFile,
+    prepared: PreparedImportFile,
+    success_message: str,
+) -> FileUploadResponse:
+    parsed_file = prepared.parsed_file
+    mapping = prepared.mapping
+    import_file.source_name = prepared.source_name
+    import_file.source_type = prepared.source_type
+    import_file.status = "processing"
+    import_file.total_rows = len(parsed_file.rows)
     db.flush()
 
     imported_rows = 0
@@ -191,7 +305,7 @@ def process_import_file(
     error_rows = 0
     error_samples: list[str] = []
     preview: list[ImportPreviewRow] = []
-    alias_lookup = get_user_alias_lookup(db, user_id)
+    alias_lookup = get_user_alias_lookup(db, import_file.user_id)
 
     for index, raw_row in enumerate(parsed_file.rows, start=1):
         raw_description = _first_non_empty(raw_row, [mapping.get("description", "")])
@@ -202,7 +316,7 @@ def process_import_file(
 
         import_row = ImportRow(
             import_file_id=import_file.id,
-            user_id=user_id,
+            user_id=import_file.user_id,
             row_number=index,
             raw_data=_json_safe_row(raw_row),
             raw_description=None if raw_description is None else str(raw_description),
@@ -218,7 +332,8 @@ def process_import_file(
         transaction_date = normalize_date(raw_row.get(mapping.get("transaction_date", "")))
         posted_date = normalize_date(raw_row.get(mapping.get("posted_date", ""))) if mapping.get("posted_date") else None
         amount_value = parse_amount(raw_row.get(mapping.get("amount", ""))) if mapping.get("amount") else None
-        direction, normalized_amount = normalize_direction(raw_row, mapping, amount_value)
+        default_direction = "debit" if prepared.source_type in {"card", "credit_card"} else None
+        direction, normalized_amount = normalize_direction(raw_row, mapping, amount_value, default_direction=default_direction)
 
         if transaction_date is None:
             parse_errors.append("missing_or_invalid_transaction_date")
@@ -240,18 +355,18 @@ def process_import_file(
             continue
 
         dedupe_fingerprint = build_dedupe_fingerprint(
-            user_id=user_id,
+            user_id=import_file.user_id,
             transaction_date=transaction_date.isoformat(),
             amount=normalized_amount,
             direction=direction,
             description_clean=description_clean,
             raw_description=description_raw,
-            source_name=source_name,
+            source_name=prepared.source_name,
         )
         existing_transaction = (
             db.query(NormalizedTransaction)
             .filter(
-                NormalizedTransaction.user_id == user_id,
+                NormalizedTransaction.user_id == import_file.user_id,
                 NormalizedTransaction.dedupe_fingerprint == dedupe_fingerprint,
             )
             .first()
@@ -265,14 +380,14 @@ def process_import_file(
         categorization = categorize_transaction(
             db,
             payload=CategorizationInput(
-                user_id=user_id,
+                user_id=import_file.user_id,
                 description_raw=description_raw,
                 description_clean=description_clean,
                 counterparty=counterparty,
                 direction=direction,
                 amount=float(normalized_amount),
-                source_type=source_type,
-                source_name=source_name,
+                source_type=prepared.source_type,
+                source_name=prepared.source_name,
             ),
             transaction_date=transaction_date,
         )
@@ -291,11 +406,11 @@ def process_import_file(
         import_row.parse_errors = []
 
         normalized_transaction = NormalizedTransaction(
-            user_id=user_id,
+            user_id=import_file.user_id,
             import_file_id=import_file.id,
             import_row_id=import_row.id,
-            source_name=source_name,
-            source_type=source_type,
+            source_name=prepared.source_name,
+            source_type=prepared.source_type,
             transaction_date=transaction_date,
             posted_date=posted_date,
             amount=float(normalized_amount),
@@ -335,23 +450,87 @@ def process_import_file(
     db.commit()
     db.refresh(import_file)
 
-    return FileUploadResponse(
-        upload_id=import_file.id,
-        file_name=import_file.file_name,
-        source_name=import_file.source_name,
-        source_type=import_file.source_type,
-        file_type=import_file.file_type,
+    return build_file_upload_response(
+        import_file,
         selected_sheet=parsed_file.selected_sheet,
         header_row_index=parsed_file.header_row_index,
-        status=import_file.status,
-        message="File processed successfully." if existing_file is None else "File reprocessed successfully.",
-        total_rows=import_file.total_rows,
-        imported_rows=import_file.imported_rows,
-        duplicate_rows=import_file.duplicate_rows,
-        error_rows=import_file.error_rows,
+        message=success_message,
         error_samples=error_samples,
         preview=preview,
-        uploaded_at=import_file.uploaded_at,
+    )
+
+
+def process_import_file_record(
+    db: Session,
+    *,
+    import_file_id: str,
+    content: bytes,
+    source_hint: str | None = None,
+) -> FileUploadResponse:
+    import_file = db.get(ImportFile, import_file_id)
+    if import_file is None:
+        raise ValueError("Import file not found.")
+
+    prepared = prepare_import_file(
+        file_name=import_file.file_name,
+        file_type=import_file.file_type,
+        content=content,
+        source_hint=source_hint,
+    )
+    return _process_prepared_import_file(
+        db,
+        import_file=import_file,
+        prepared=prepared,
+        success_message="File processed successfully.",
+    )
+
+
+def process_import_file(
+    db: Session,
+    *,
+    user_id: str,
+    file_name: str,
+    file_type: str,
+    content: bytes,
+    force_reprocess: bool = True,
+    source_hint: str | None = None,
+) -> FileUploadResponse:
+    file_hash = compute_file_hash(content)
+    existing_file = find_existing_import_file(db, user_id=user_id, file_hash=file_hash)
+    if existing_file is not None:
+        if force_reprocess:
+            db.delete(existing_file)
+            db.flush()
+        else:
+            return build_file_upload_response(
+                existing_file,
+                status="duplicate_file",
+                message="This file has already been imported for this user.",
+            )
+
+    prepared = prepare_import_file(
+        file_name=file_name,
+        file_type=file_type,
+        content=content,
+        source_hint=source_hint,
+    )
+    import_file = ImportFile(
+        user_id=user_id,
+        file_name=file_name,
+        file_type=file_type,
+        source_name=prepared.source_name,
+        source_type=prepared.source_type,
+        file_hash=file_hash,
+        status="processing",
+        total_rows=len(prepared.parsed_file.rows),
+    )
+    db.add(import_file)
+    db.flush()
+    return _process_prepared_import_file(
+        db,
+        import_file=import_file,
+        prepared=prepared,
+        success_message="File processed successfully." if existing_file is None else "File reprocessed successfully.",
     )
 
 

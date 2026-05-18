@@ -1,7 +1,7 @@
 from datetime import date
 from typing import Optional
 
-from sqlalchemy import Boolean, Date, Float, ForeignKey, Numeric, String, Text
+from sqlalchemy import Boolean, Date, Float, ForeignKey, Index, Numeric, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
@@ -9,6 +9,17 @@ from app.models.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
 
 class NormalizedTransaction(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "normalized_transactions"
+    __table_args__ = (
+        Index("ix_normalized_transactions_direction", "direction"),
+        Index("ix_normalized_transactions_category_code", "category_code"),
+        Index("ix_normalized_transactions_dedupe_status", "dedupe_status"),
+        Index("ix_normalized_transactions_source_type", "source_type"),
+        Index("ix_normalized_transactions_counterparty_name", "counterparty_name"),
+        Index("ix_normalized_transactions_user_import_file", "user_id", "import_file_id"),
+        Index("ix_normalized_transactions_user_import_file_dedupe", "user_id", "import_file_id", "dedupe_status"),
+        Index("ix_normalized_transactions_user_transaction_date", "user_id", "transaction_date"),
+        Index("ix_normalized_transactions_user_category", "user_id", "category_code"),
+    )
 
     user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
     import_file_id: Mapped[str] = mapped_column(ForeignKey("import_files.id"), nullable=False, index=True)

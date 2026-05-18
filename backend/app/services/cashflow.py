@@ -14,6 +14,7 @@ from app.models.ledger_entry import LedgerEntry
 from app.models.loan import Loan
 from app.models.normalized_transaction import NormalizedTransaction
 from app.schemas.cashflow import CashflowSummaryResponse, ProtectedDueItem
+from app.services.due_matching import ConfirmedDueSignature, confirmed_due_matches, confirmed_due_signatures
 from app.services.upcoming_dues import ensure_recurring_dues_current, is_recurring_manual_due
 
 
@@ -506,6 +507,7 @@ def _fixed_due_estimate(
     cycle_start: date,
     horizon_days: int,
     paid_due_amounts: dict[str, float],
+    existing_confirmed_dues: list[ConfirmedDueSignature],
 ) -> tuple[float, list[str], list[str], list[str], list[ProtectedDueItem]]:
     horizon_end = as_of + timedelta(days=horizon_days)
     grouped: dict[str, list[NormalizedTransaction]] = defaultdict(list)
@@ -538,8 +540,15 @@ def _fixed_due_estimate(
         if as_of <= candidate <= horizon_end:
             amount = float(latest.amount)
             label = latest.category_code.replace("_", " ") if latest.category_code else "fixed due"
-            labels.append(label)
             readable_name = _humanize_counterparty(latest.counterparty_name or latest.description_clean, label)
+            if confirmed_due_matches(
+                existing_confirmed_dues,
+                counterparty=f"{readable_name} {latest.counterparty_name or ''} {latest.description_clean or latest.description_raw or ''}",
+                amount=amount,
+                frequency="monthly",
+            ):
+                continue
+            labels.append(label)
             formatted_date = candidate.strftime("%B %d")
             due_key = (
                 f"pattern_due:{latest.category_code or 'due'}:"
@@ -635,10 +644,22 @@ def build_cashflow_summary(db: Session, user_id: str, as_of: date | None = None)
         manual_due_items = _manual_due_items(db, user_id, cycle_start, as_of_date, next_income_date)
         manual_due_total = _manual_due_total(db, user_id, as_of_date, next_income_date)
         business_reserve = max(float(profile.business_reserve_amount), 0.0) if profile and profile.business_reserve_amount is not None else 0.0
-        safe_to_spend = _round_money(max(manual_cash - manual_due_total - business_reserve, 0.0))
-        safe_to_spend_bank_only = 0.0 if cash_is_stale else safe_to_spend
         confirmed_bank_balance = float(profile.bank_balance_confirmed) if profile and profile.bank_balance_confirmed is not None else None
         working_bank_balance = round(max(confirmed_bank_balance or 0.0, 0.0), 2)
+        days_until_income = max((next_income_date - as_of_date).days, 1)
+        baseline_daily_spend = (
+            round(float(profile.daily_needs_override), 2)
+            if profile and profile.daily_needs_override is not None and float(profile.daily_needs_override) > 0
+            else 0.0
+        )
+        daily_needs_required = round(baseline_daily_spend * days_until_income, 2)
+        effective_available_money = _round_money(max(working_bank_balance + manual_cash - manual_due_total - business_reserve, 0.0))
+        safe_to_spend = _round_money(effective_available_money - daily_needs_required)
+        effective_available_bank_only = _round_money(max(working_bank_balance - manual_due_total - business_reserve, 0.0))
+        safe_to_spend_bank_only = _round_money(effective_available_bank_only - daily_needs_required)
+        daily_needs_buffer = round(min(effective_available_money, daily_needs_required), 2)
+        shortfall_amount = _round_money(daily_needs_required - effective_available_money)
+        shortfall_amount_bank_only = _round_money(daily_needs_required - effective_available_bank_only)
         return CashflowSummaryResponse(
             as_of_date=as_of_date,
             latest_activity_date=None,
@@ -648,7 +669,7 @@ def build_cashflow_summary(db: Session, user_id: str, as_of: date | None = None)
             plain_summary="You can add cash, dues, and important money changes now. Statement history will make the answer smarter later.",
             safe_till_date=None,
             next_income_date=next_income_date,
-            effective_available_money=_round_money(max(manual_cash - manual_due_total - business_reserve, 0.0)),
+            effective_available_money=effective_available_money,
             liquid_balance=0,
             detected_bank_balance=0,
             working_bank_balance=working_bank_balance,
@@ -658,20 +679,25 @@ def build_cashflow_summary(db: Session, user_id: str, as_of: date | None = None)
             cash_is_stale=cash_is_stale,
             business_reserve_amount=round(business_reserve, 2),
             upcoming_dues_total=manual_due_total,
-            daily_needs_buffer=0,
-            daily_needs_required=0,
-            baseline_daily_spend=0,
+            daily_needs_buffer=daily_needs_buffer,
+            daily_needs_required=daily_needs_required,
+            baseline_daily_spend=baseline_daily_spend,
             runway_days=None,
             safe_to_spend=safe_to_spend,
             safe_to_spend_bank_only=safe_to_spend_bank_only,
             safe_to_save=0,
             safe_to_invest=0,
-            shortfall_amount=0,
-            shortfall_amount_bank_only=0,
+            shortfall_amount=shortfall_amount,
+            shortfall_amount_bank_only=shortfall_amount_bank_only,
             confidence="low",
             explanations=[
                 "This is a clean start with no statement history yet.",
                 "Any cash or due you add now will show up here first.",
+                *(
+                    [f"Daily needs till the next income are set aside at about {_fmt_money(daily_needs_required)}."]
+                    if daily_needs_required > 0
+                    else []
+                ),
             ],
             watchouts=[],
             protected_due_items=manual_due_items,
@@ -749,8 +775,9 @@ def build_cashflow_summary(db: Session, user_id: str, as_of: date | None = None)
         .all()
     )
     paid_pattern_due_amounts = _pattern_due_payments(db, user_id, cycle_start, as_of_date)
+    existing_confirmed_dues = confirmed_due_signatures(db, user_id)
     pattern_due_total, due_labels, _due_watchouts, forgotten_subscriptions, pattern_due_items = _fixed_due_estimate(
-        rows, as_of_date, cycle_start, days_until_income, paid_pattern_due_amounts
+        rows, as_of_date, cycle_start, days_until_income, paid_pattern_due_amounts, existing_confirmed_dues
     )
     manual_due_items = _manual_due_items(db, user_id, cycle_start, as_of_date, next_income_date)
     manual_card_due_total = _manual_card_due_activity(db, user_id, cycle_start, as_of_date)
@@ -828,6 +855,8 @@ def build_cashflow_summary(db: Session, user_id: str, as_of: date | None = None)
         confidence = _lower_confidence(confidence, "medium")
     if coverage_days < 14:
         confidence = _lower_confidence(confidence, "low")
+    if pending_pattern_dues:
+        confidence = _lower_confidence(confidence, "medium")
 
     safe_to_spend = _round_money(safe_leftover)
     safe_to_save = _round_money(safe_leftover - uncertainty_buffer)
@@ -881,6 +910,8 @@ def build_cashflow_summary(db: Session, user_id: str, as_of: date | None = None)
         explanations.append(f"Cash on hand includes your declared starting cash of {_fmt_money(float(profile.start_cash_amount))}.")
     if business_reserve > 0:
         explanations.append(f"We kept about {_fmt_money(business_reserve)} aside first for business running costs.")
+    if pending_pattern_dues:
+        explanations.append("Some recurring payments were detected but are not counted until you confirm them.")
     if next_income_date:
         explanations.append(f"The next income is estimated around {next_income_date.strftime('%b %d')}.")
         if bank_balance_needs_confirmation:

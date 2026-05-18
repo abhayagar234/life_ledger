@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useEffect } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { AppScreen } from "../../components/AppScreen";
 import { Button } from "../../components/Button";
@@ -223,6 +223,24 @@ function buildDueSoonWatchouts(
   return watchouts;
 }
 
+function isDueInCurrentMonth(dueDateString: string) {
+  const [yearText, monthText] = dueDateString.split("-");
+  const dueYear = Number(yearText);
+  const dueMonth = Number(monthText);
+  if (!Number.isFinite(dueYear) || !Number.isFinite(dueMonth)) {
+    return false;
+  }
+  const today = new Date();
+  return dueYear === today.getFullYear() && dueMonth === today.getMonth() + 1;
+}
+
+function visibleDueAmount(item: { status: "pending" | "partial" | "paid"; remaining_amount: number; amount: number }) {
+  if (item.status === "paid") {
+    return 0;
+  }
+  return item.remaining_amount || item.amount;
+}
+
 function isRedundantDueWatchout(value: string) {
   return /keep this aside first/i.test(value);
 }
@@ -301,30 +319,6 @@ function buildDataHealthLine(
 
   const prefix = language === "hi" ? "आधार:" : language === "mr" ? "आधार:" : "Based on:";
   return `${prefix} ${bankPart} · ${cashPart} · ${duePart}`;
-}
-
-function buildWhyNowLine(language: LanguageCode, dues: string, cash: string, bank: string) {
-  if (language === "hi") {
-    return `${dues} पहले से बंधा · ${cash} नकद साथ में · ${bank} बैंक / बचत में`;
-  }
-  if (language === "mr") {
-    return `${dues} आधीच बांधलेले · ${cash} हातातील रोख · ${bank} बँक / बचतीत`;
-  }
-  return `${dues} already spoken for · ${cash} cash with you · ${bank} bank / savings left`;
-}
-
-function buildWhyNowTitle(
-  language: LanguageCode,
-  input: { status?: string | null; safeToSpend?: number | null; shortfall?: number | null }
-) {
-  const isPositiveState = (input.safeToSpend ?? 0) > 0 && (input.shortfall ?? 0) <= 0;
-  if (input.status === "safe" || isPositiveState) {
-    return language === "hi" ? "यह नंबर कैसे बना" : language === "mr" ? "हा नंबर कसा बनला" : "What this number uses";
-  }
-  if (input.status === "needs_data") {
-    return language === "hi" ? "अभी हमें क्या पता है" : language === "mr" ? "आत्ता आम्हाला काय माहिती आहे" : "What we know so far";
-  }
-  return t(language, "whyNowTitle");
 }
 
 function buildDueStatusCopy(language: LanguageCode, item: {
@@ -531,13 +525,18 @@ function buildHomeCopy(language: LanguageCode) {
       neededBeforeNextMoney: "अगले पैसे आने से पहले ज़रूरी",
       fullyCoveredTillNextIncome: "अगले पैसे आने तक पूरी तरह कवर",
       ofNeededTillNextIncome: (amount: string) => `अगले पैसे आने तक ज़रूरी ${amount} में से`,
-      bankSeenHelper: "स्टेटमेंट गतिविधि से अनुमानित",
+      bankSeenHelper: "लेटेस्ट स्टेटमेंट और बैंक अपडेट से",
       bankSeenNegativeHelper: "इस चक्र में जितना आया उससे ज़्यादा बैंक / UPI से निकल चुका है",
-      cashOnHandHelper: "आपके आखिरी नकद अपडेट पर आधारित",
+      cashOnHandHelper: "नकद बदले तो इसे अपडेट करें",
       addMoneyHint: "आज आया पैसा जोड़ें",
       resetCashHint: "अगर दिख रहा नकद गलत है तो सही करें",
       cashBlindSpotHint: "नकद वाले अंधे हिस्से को भरें",
-      protectDueHint: "जो देय अभी नहीं दिख रहा, उसे सुरक्षित करें"
+      protectDueHint: "जो देय अभी नहीं दिख रहा, उसे सुरक्षित करें",
+      numberBreakdownTitle: "यह नंबर ऐसे बना",
+      numberBreakdownBody: "बैंक और नकद में से देय और रोज़मर्रा रिज़र्व हटाकर।",
+      cashNotCounted: "नकद नहीं गिना गया",
+      dailyReserveHelper: () => "अगले पैसे आने तक ज़रूरी खर्च के लिए अलग रखा गया",
+      safeTodayLine: "आज सुरक्षित खर्च"
     };
   }
   if (language === "mr") {
@@ -558,13 +557,18 @@ function buildHomeCopy(language: LanguageCode) {
       neededBeforeNextMoney: "पुढचे पैसे येण्याआधी गरजेचे",
       fullyCoveredTillNextIncome: "पुढचे पैसे येईपर्यंत पूर्ण कव्हर",
       ofNeededTillNextIncome: (amount: string) => `पुढचे पैसे येईपर्यंत लागणाऱ्या ${amount} पैकी`,
-      bankSeenHelper: "स्टेटमेंट हालचालीवरून अंदाज",
+      bankSeenHelper: "लेटेस्ट स्टेटमेंट आणि बँक अपडेटवरून",
       bankSeenNegativeHelper: "या फेरीत जितके आले त्यापेक्षा जास्त बँक / UPI मधून गेले आहे",
-      cashOnHandHelper: "तुमच्या शेवटच्या रोख अपडेटवर आधारित",
+      cashOnHandHelper: "रोख बदलली की हे अपडेट करा",
       addMoneyHint: "आज आलेले पैसे जोडा",
       resetCashHint: "दिसणारी रोख चुकत असेल तर दुरुस्त करा",
       cashBlindSpotHint: "रोख खर्चातील उणीव भरा",
-      protectDueHint: "जो देय अजून दिसत नाही तो सुरक्षित करा"
+      protectDueHint: "जो देय अजून दिसत नाही तो सुरक्षित करा",
+      numberBreakdownTitle: "हा नंबर असा बनला",
+      numberBreakdownBody: "बँक आणि रोख रकमेतून देणी आणि रोजचा राखीव भाग बाजूला ठेवून.",
+      cashNotCounted: "रोख मोजलेली नाही",
+      dailyReserveHelper: () => "पुढचे पैसे येईपर्यंत गरजेच्या खर्चासाठी बाजूला ठेवले",
+      safeTodayLine: "आज सुरक्षित खर्च"
     };
   }
   return {
@@ -584,13 +588,18 @@ function buildHomeCopy(language: LanguageCode) {
     neededBeforeNextMoney: "needed before the next money point",
     fullyCoveredTillNextIncome: "fully covered till next income",
     ofNeededTillNextIncome: (amount: string) => `of ${amount} needed till next income`,
-    bankSeenHelper: "estimated from statement activity",
+    bankSeenHelper: "from latest statement and bank updates",
     bankSeenNegativeHelper: "More went out through bank / UPI than came in during this cycle",
-    cashOnHandHelper: "based on your latest cash update",
+    cashOnHandHelper: "update this whenever cash changes",
     addMoneyHint: "add money that came in today",
     resetCashHint: "reset if the shown cash looks wrong",
     cashBlindSpotHint: "fill the cash blind spot",
-    protectDueHint: "protect a due that is not visible yet"
+    protectDueHint: "protect a due that is not visible yet",
+    numberBreakdownTitle: "How this number is made",
+    numberBreakdownBody: "Bank and cash minus dues and the daily basics reserve.",
+    cashNotCounted: "Cash not counted",
+    dailyReserveHelper: () => "set aside for basics until the next money point",
+    safeTodayLine: "Safe to spend today"
   };
 }
 
@@ -610,7 +619,7 @@ export default function HomeScreen() {
     if (!profile) {
       return;
     }
-    void refreshDashboard({ includeSecondary: false, force: dataMode !== "empty" });
+    void refreshDashboard({ includeSecondary: false });
   }, [dataMode, profile, refreshDashboard]);
 
   if (!profile) {
@@ -650,11 +659,17 @@ export default function HomeScreen() {
   const keepAsideCopy = buildKeepAsideCopy(language);
   const showStaleCashBanner = Boolean(cashflow?.cash_is_stale);
   const schemeCards = buildSchemeCards(language, profile.user_type);
+  const showGovernmentSchemes = false;
+  const visibleProtectedDueItems =
+    cashflow?.protected_due_items.filter(
+      (item) => item.source_type !== "statement_pattern" && isDueInCurrentMonth(item.due_date)
+    ) ?? [];
+  const visibleProtectedDueTotal = visibleProtectedDueItems.reduce((sum, item) => sum + visibleDueAmount(item), 0);
   const creditCardOutstandingWatchouts =
-    cashflow?.protected_due_items
+    visibleProtectedDueItems
       .filter((item) => item.status === "partial" && item.remaining_amount > 0 && isCreditCardDueName(item.name))
-      .map((item) => buildCreditCardOutstandingWatchout(language, item.remaining_amount)) ?? [];
-  const dueSoonWatchouts = cashflow ? buildDueSoonWatchouts(language, cashflow.protected_due_items) : [];
+      .map((item) => buildCreditCardOutstandingWatchout(language, item.remaining_amount));
+  const dueSoonWatchouts = buildDueSoonWatchouts(language, visibleProtectedDueItems);
   const serverWatchouts = (cashflow?.watchouts ?? []).filter((alert) => !isRedundantDueWatchout(alert));
   const mergedWatchouts = [...dueSoonWatchouts, ...creditCardOutstandingWatchouts, ...serverWatchouts];
   const dedupedWatchouts: string[] = [];
@@ -668,6 +683,11 @@ export default function HomeScreen() {
     dedupedWatchouts.push(alert);
   }
   const allWatchouts = dedupedWatchouts;
+  const displayedShortfall = cashflow
+    ? showStaleCashBanner
+      ? cashflow.shortfall_amount_bank_only
+      : cashflow.shortfall_amount
+    : 0;
   const heroValue = cashflow
     ? cashflow.shortfall_amount > 0
       ? formatMoney(cashflow.shortfall_amount)
@@ -686,32 +706,42 @@ export default function HomeScreen() {
         cashOnHand: cashflow.cash_on_hand,
         cashIsStale: cashflow.cash_is_stale,
         staleCashDays,
-        dueCount: cashflow.protected_due_items.length
+        dueCount: visibleProtectedDueItems.length
       })
     : null;
   const displayedBankSeen = cashflow ? Math.max(cashflow.liquid_balance, 0) : 0;
   const heroLabel =
-    cashflow?.shortfall_amount && cashflow.shortfall_amount > 0
+    displayedShortfall > 0
       ? t(language, "stillToProtect")
-      : cashflow?.confidence === "low"
-        ? t(language, "safeToSpendIncomplete")
-        : cashflow?.confidence === "medium"
-          ? t(language, "safeToSpendEstimated")
-          : t(language, "safeToSpend");
+      : cashflow?.confidence === "medium" || cashflow?.confidence === "low"
+        ? t(language, "safeToSpendEstimated")
+        : t(language, "safeToSpend");
   const confidenceLabel =
     cashflow?.confidence === "medium"
       ? t(language, "confidenceMedium")
       : cashflow?.confidence === "low"
         ? t(language, "confidenceLow")
         : null;
-  const whyNowLine = cashflow
-    ? buildWhyNowLine(
-        language,
-        formatMoney(cashflow.upcoming_dues_total),
-        cashflow.cash_is_stale ? "—" : formatMoney(cashflow.cash_on_hand),
-        formatMoney(cashflow.working_bank_balance || displayedBankSeen)
-      )
-    : null;
+  const dailyReserveHelper =
+    cashflow?.baseline_daily_spend && cashflow.baseline_daily_spend > 0
+      ? homeCopy.dailyReserveHelper()
+      : homeCopy.needsEstimateLater;
+  function showNumberFormula() {
+    if (!cashflow) {
+      return;
+    }
+    const lines = [
+      `${t(language, "bankSeen")}: ${formatMoney(cashflow.working_bank_balance || displayedBankSeen)}`,
+      `${t(language, "cashWithYou")}: ${cashflow.cash_is_stale ? homeCopy.cashNotCounted : formatMoney(cashflow.cash_on_hand)}`,
+      `${t(language, "dailyNeedsCovered")}: ${formatMoney(cashflow.daily_needs_required)}`,
+    ];
+    if (cashflow.business_reserve_amount > 0) {
+      lines.push(`${t(language, "businessReserveTitle")}: ${formatMoney(cashflow.business_reserve_amount)}`);
+    }
+    lines.push(`${t(language, "alreadySpokenFor")}: ${formatMoney(visibleProtectedDueTotal)}`);
+    lines.push(`${t(language, "safeToSpend")}: ${displayedHeroValue}`);
+    Alert.alert(homeCopy.numberBreakdownTitle, lines.join("\n"));
+  }
   return (
     <AppScreen
       title={`Hello, ${displayName}`}
@@ -721,7 +751,7 @@ export default function HomeScreen() {
           label={t(language, "refresh")}
           variant="secondary"
           onPress={() => {
-            void refreshDashboard();
+            void refreshDashboard({ force: true });
           }}
         />
       }
@@ -762,8 +792,17 @@ export default function HomeScreen() {
           <View style={[commonStyles.card, commonStyles.shadow, styles.gaugeCard]}>
             <View style={styles.gaugeHeader}>
               <Text style={styles.gaugeEyebrow}>{homeCopy.moneyFuel}</Text>
-              <View style={[styles.zonePill, { backgroundColor: gauge.color }]}>
-                <Text style={styles.zonePillText}>{gauge.zone}</Text>
+              <View style={styles.gaugeHeaderActions}>
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={showNumberFormula}
+                  style={({ pressed }) => [styles.calcInfoButton, pressed ? styles.calcInfoButtonPressed : null]}
+                >
+                  <Ionicons name="information-circle-outline" size={18} color={theme.colors.primary} />
+                </Pressable>
+                <View style={[styles.zonePill, { backgroundColor: gauge.color }]}>
+                  <Text style={styles.zonePillText}>{gauge.zone}</Text>
+                </View>
               </View>
             </View>
 
@@ -795,7 +834,6 @@ export default function HomeScreen() {
                 </Text>
               </View>
             ) : null}
-            {cashflow.confidence === "low" ? <Text style={styles.heroConfidenceHelp}>{t(language, "confidenceLowAction")}</Text> : null}
             {showStaleCashBanner ? <Text style={styles.heroConfidenceHelp}>{t(language, "staleCashExcluded")}</Text> : null}
             {cashflow.safe_to_spend <= 0 && (cashflow.cash_on_hand > 0 || (cashflow.working_bank_balance ?? 0) > 0) ? (
               <>
@@ -824,71 +862,12 @@ export default function HomeScreen() {
             <Text style={styles.gaugeSummary}>{cashflow.plain_summary}</Text>
           </View>
 
-          {whyNowLine ? (
-            <View style={[commonStyles.card, styles.whyNowCard]}>
-              <Text style={styles.whyNowTitle}>
-                {buildWhyNowTitle(language, {
-                  status: cashflow.status,
-                  safeToSpend: cashflow.safe_to_spend,
-                  shortfall: cashflow.shortfall_amount
-                })}
-              </Text>
-              <Text style={styles.whyNowBody}>{whyNowLine}</Text>
-            </View>
-          ) : null}
-
-          {cashflow.business_reserve_amount > 0 ? (
-            <View style={[commonStyles.card, styles.whyNowCard]}>
-              <Text style={styles.whyNowTitle}>{t(language, "businessReserveTitle")}</Text>
-              <Text style={styles.whyNowBody}>
-                {`${formatMoney(cashflow.business_reserve_amount)} ${t(language, "businessReserveBody")}`}
-              </Text>
-            </View>
-          ) : null}
-
           <View style={styles.metricStack}>
-            <View style={[commonStyles.card, styles.metricCard, styles.metricCardUnified, styles.metricWideCard]}>
-              <View style={styles.dailyReserveHeader}>
-                <Text style={styles.metricLabel}>
-                  {cashflow.daily_needs_required > 0 && cashflow.daily_needs_buffer <= 0
-                    ? t(language, "dailyNeedsToProtect")
-                    : t(language, "dailyNeedsCovered")}
-                </Text>
-                <Pressable
-                  accessibilityRole="button"
-                  onPress={() => router.push("/edit-daily-needs")}
-                  style={({ pressed }) => [styles.dailyReserveEdit, pressed ? styles.metricFooterActionPressed : null]}
-                >
-                  <Text style={styles.dailyReserveEditText}>{dailyEditLabel(language)}</Text>
-                </Pressable>
-              </View>
-              <View style={styles.dailyReserveBody}>
-                <View style={styles.dailyReserveMain}>
-                  <Text style={styles.metricValue}>
-                    {formatMoney(cashflow.daily_needs_required > 0 && cashflow.daily_needs_buffer <= 0 ? cashflow.daily_needs_required : cashflow.daily_needs_buffer)}
-                  </Text>
-                  <Text style={styles.metricHelper}>
-                    {cashflow.daily_needs_required <= 0
-                      ? homeCopy.needsEstimateLater
-                      : cashflow.daily_needs_buffer <= 0
-                        ? homeCopy.neededBeforeNextMoney
-                        : cashflow.daily_needs_buffer >= cashflow.daily_needs_required
-                        ? homeCopy.fullyCoveredTillNextIncome
-                          : homeCopy.ofNeededTillNextIncome(formatMoney(cashflow.daily_needs_required))}
-                  </Text>
-                </View>
-                {cashflow.baseline_daily_spend > 0 ? (
-                  <View style={styles.dailyRateBox}>
-                    <Text style={styles.dailyRateLabel}>Per day</Text>
-                    <Text style={styles.dailyRateValue}>{formatMoney(cashflow.baseline_daily_spend)}</Text>
-                  </View>
-                ) : null}
-              </View>
-            </View>
-
             <View style={styles.metricRow}>
-              <View style={[commonStyles.card, styles.metricCard, styles.metricCardUnified, profile.tracks_cash ? styles.metricHalfCard : styles.metricWideCard]}>
-                <Text style={styles.metricLabel}>{dataMode === "real" ? t(language, "bankSeen") : t(language, "bankSeenSample")}</Text>
+              <View style={[commonStyles.card, commonStyles.shadow, styles.metricCard, styles.metricCardUnified, styles.metricHalfCard, styles.bankMetricCard]}>
+                <View style={styles.metricHeaderSimple}>
+                  <Text style={styles.metricLabel}>{dataMode === "real" ? t(language, "bankSeen") : t(language, "bankSeenSample")}</Text>
+                </View>
                 <Text style={styles.metricValue}>{formatMoney(cashflow.working_bank_balance || displayedBankSeen)}</Text>
                 <Text style={styles.metricHelper}>
                   {dataMode !== "real"
@@ -905,24 +884,54 @@ export default function HomeScreen() {
                   <Text style={styles.metricFooterActionText}>{t(language, "bankConfirmEdit")}</Text>
                 </Pressable>
               </View>
-              {profile.tracks_cash ? (
-                <View style={[commonStyles.card, styles.metricCard, styles.metricCardUnified, styles.metricHalfCard]}>
+
+              <View style={[commonStyles.card, commonStyles.shadow, styles.metricCard, styles.metricCardUnified, styles.metricHalfCard, styles.cashMetricCard]}>
+                <View style={styles.metricHeaderSimple}>
                   <Text style={styles.metricLabel}>{t(language, "cashWithYou")}</Text>
-                  <Text style={styles.metricValue}>{cashflow.cash_is_stale ? "—" : formatMoney(cashflow.cash_on_hand)}</Text>
-                  <Text style={styles.metricHelper}>
-                    {cashflow.cash_is_stale
-                      ? `${t(language, "staleCashUnknown")}${staleCashDays !== null ? ` · ${staleCashDays}d ago` : ""}`
-                      : homeCopy.cashOnHandHelper}
-                  </Text>
-                  <Pressable
-                    accessibilityRole="button"
-                    onPress={() => router.push({ pathname: "/add-entry", params: { mode: "cash_set" } })}
-                    style={({ pressed }) => [styles.metricFooterAction, pressed ? styles.metricFooterActionPressed : null]}
-                  >
-                    <Text style={styles.metricFooterActionText}>{t(language, "bankConfirmEdit")}</Text>
-                  </Pressable>
                 </View>
-              ) : null}
+                <Text style={styles.metricValue}>{cashflow.cash_is_stale ? homeCopy.cashNotCounted : formatMoney(cashflow.cash_on_hand)}</Text>
+                <Text style={styles.metricHelper}>
+                  {cashflow.cash_is_stale
+                    ? `${t(language, "staleCashUnknown")}${staleCashDays !== null ? ` · ${staleCashDays}d ago` : ""}`
+                    : homeCopy.cashOnHandHelper}
+                </Text>
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() => router.push({ pathname: "/add-entry", params: { mode: "cash_set" } })}
+                  style={({ pressed }) => [styles.metricFooterAction, pressed ? styles.metricFooterActionPressed : null]}
+                >
+                  <Text style={styles.metricFooterActionText}>{t(language, "bankConfirmEdit")}</Text>
+                </Pressable>
+              </View>
+            </View>
+
+            <View style={styles.metricRow}>
+              <View style={[commonStyles.card, commonStyles.shadow, styles.metricCard, styles.metricCardUnified, styles.metricWideCard, styles.dailyReserveCard]}>
+                <View style={styles.dailyReserveHeader}>
+                  <View style={styles.dailyReserveMain}>
+                    <Text style={styles.metricLabel}>{t(language, "dailyNeedsCovered")}</Text>
+                    <Text style={styles.metricValue}>{formatMoney(cashflow.daily_needs_required)}</Text>
+                  </View>
+                  {(cashflow.baseline_daily_spend ?? 0) > 0 ? (
+                    <View style={styles.dailyRateBox}>
+                      <Text style={styles.dailyRateLabel}>
+                        {language === "hi" ? "प्रति दिन" : language === "mr" ? "दररोज" : "per day"}
+                      </Text>
+                      <Text style={styles.dailyRateValue}>{formatMoney(cashflow.baseline_daily_spend)}</Text>
+                    </View>
+                  ) : null}
+                </View>
+                <View style={styles.dailyReserveBody}>
+                  <Text style={styles.metricHelper}>{dailyReserveHelper}</Text>
+                </View>
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() => router.push("/edit-daily-needs")}
+                  style={({ pressed }) => [styles.dailyReserveEdit, pressed ? styles.metricFooterActionPressed : null]}
+                >
+                  <Text style={styles.dailyReserveEditText}>{dailyEditLabel(language)}</Text>
+                </Pressable>
+              </View>
             </View>
           </View>
 
@@ -933,14 +942,14 @@ export default function HomeScreen() {
                 <Text style={styles.requiredTitle}>{keepAsideCopy.title}</Text>
               </View>
               <View style={styles.requiredTotalWrap}>
-                <Text style={styles.requiredTotal}>{formatMoney(cashflow.upcoming_dues_total)}</Text>
+                <Text style={styles.requiredTotal}>{formatMoney(visibleProtectedDueTotal)}</Text>
                 <Text style={styles.requiredTotalLabel}>{keepAsideCopy.safeAfter}: {formatMoney(cashflow.safe_to_spend)}</Text>
               </View>
             </View>
 
-            {cashflow.protected_due_items.filter((item) => item.source_type !== "statement_pattern").length ? (
+            {visibleProtectedDueItems.length ? (
               <>
-                {cashflow.protected_due_items.filter((item) => item.source_type !== "statement_pattern").map((item) => {
+                {visibleProtectedDueItems.map((item) => {
                   const isPaid = item.status === "paid";
                   const isPartial = item.status === "partial";
                   const dueStatus = buildDueStatusCopy(language, item);
@@ -948,7 +957,6 @@ export default function HomeScreen() {
                     <View
                       key={item.due_key}
                       style={[
-                        commonStyles.card,
                         styles.dueCard,
                         isPaid ? styles.dueCardPaid : null,
                         isPartial ? styles.dueCardPartial : null
@@ -993,9 +1001,9 @@ export default function HomeScreen() {
                     </View>
                   );
                 })}
-                {cashflow.protected_due_items.filter((item) => item.source_type !== "statement_pattern" && item.status === "paid").length ? (
+                {visibleProtectedDueItems.filter((item) => item.status === "paid").length ? (
                   <Text style={styles.paidCountText}>
-                    {keepAsideCopy.paidCount(cashflow.protected_due_items.filter((item) => item.source_type !== "statement_pattern" && item.status === "paid").length)}
+                    {keepAsideCopy.paidCount(visibleProtectedDueItems.filter((item) => item.status === "paid").length)}
                   </Text>
                 ) : null}
               </>
@@ -1023,7 +1031,7 @@ export default function HomeScreen() {
             ))}
           </View>
 
-          {schemeCards.length ? (
+          {showGovernmentSchemes && schemeCards.length ? (
             <View style={[commonStyles.card, commonStyles.shadow, styles.schemeSection]}>
               <Text style={styles.schemeSectionTitle}>{t(language, "schemesSectionTitle")}</Text>
               <Text style={styles.schemeSectionSubtitle}>{t(language, "schemesSectionSubtitle")}</Text>
@@ -1290,6 +1298,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: theme.spacing.md
   },
+  gaugeHeaderActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing.xs
+  },
   gaugeEyebrow: {
     fontSize: theme.typography.caption,
     color: theme.colors.textMuted,
@@ -1305,6 +1318,19 @@ const styles = StyleSheet.create({
     fontSize: theme.typography.caption,
     color: theme.colors.white,
     fontWeight: "700"
+  },
+  calcInfoButton: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#EAF4EE",
+    borderWidth: 1,
+    borderColor: "#D2E6D9"
+  },
+  calcInfoButtonPressed: {
+    opacity: 0.72
   },
   gaugeTrack: {
     position: "relative",
@@ -1359,21 +1385,6 @@ const styles = StyleSheet.create({
   nextStepCard: {
     gap: theme.spacing.xs
   },
-  whyNowCard: {
-    gap: theme.spacing.xs,
-    backgroundColor: "#F8F4EC"
-  },
-  whyNowTitle: {
-    fontSize: theme.typography.caption,
-    color: theme.colors.primary,
-    textTransform: "uppercase",
-    letterSpacing: 0.6
-  },
-  whyNowBody: {
-    fontSize: theme.typography.body,
-    lineHeight: 22,
-    color: theme.colors.text
-  },
   nextStepEyebrow: {
     fontSize: theme.typography.caption,
     color: theme.colors.primary,
@@ -1392,7 +1403,9 @@ const styles = StyleSheet.create({
   },
   requiredCard: {
     gap: theme.spacing.md,
-    backgroundColor: "#FFF9EF"
+    backgroundColor: "#FFF9EF",
+    borderWidth: 1,
+    borderColor: "#F0DFC0"
   },
   requiredHeader: {
     flexDirection: "row",
@@ -1434,17 +1447,29 @@ const styles = StyleSheet.create({
     gap: theme.spacing.xs
   },
   metricCardUnified: {
-    minHeight: 134,
+    minHeight: 146,
     justifyContent: "space-between",
     backgroundColor: "#FCFCFB",
     borderWidth: 1,
     borderColor: "#E6E9E5"
+  },
+  bankMetricCard: {
+    backgroundColor: "#F5FAF7",
+    borderColor: "#CFE3D6"
+  },
+  cashMetricCard: {
+    backgroundColor: "#F7F6FD",
+    borderColor: "#DCD8EF"
   },
   metricWideCard: {
     flex: 1
   },
   metricHalfCard: {
     flex: 1
+  },
+  dailyReserveCard: {
+    backgroundColor: "#FFF8EA",
+    borderColor: "#EBD8AA"
   },
   metricHeaderSimple: {
     marginBottom: 2
@@ -1457,7 +1482,7 @@ const styles = StyleSheet.create({
   },
   dailyReserveBody: {
     flexDirection: "row",
-    alignItems: "flex-end",
+    alignItems: "flex-start",
     justifyContent: "space-between",
     gap: theme.spacing.md
   },
@@ -1466,6 +1491,7 @@ const styles = StyleSheet.create({
     gap: theme.spacing.xs
   },
   dailyReserveEdit: {
+    alignSelf: "flex-start",
     paddingHorizontal: 12,
     paddingVertical: 7,
     borderRadius: 999,
@@ -1670,7 +1696,13 @@ const styles = StyleSheet.create({
     color: theme.colors.text
   },
   dueCard: {
-    gap: theme.spacing.sm
+    gap: theme.spacing.sm,
+    borderWidth: 1,
+    borderColor: "#EADDC8",
+    borderRadius: theme.radius.md,
+    backgroundColor: "#FFFFFF",
+    paddingVertical: theme.spacing.sm,
+    paddingHorizontal: theme.spacing.sm
   },
   dueCardPaid: {
     backgroundColor: "#F7F5EE"

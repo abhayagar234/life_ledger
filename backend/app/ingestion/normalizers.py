@@ -223,6 +223,7 @@ def normalize_direction(
     raw_row: dict,
     mapping: dict[str, str],
     amount_value: Decimal | None,
+    default_direction: str | None = None,
 ) -> tuple[str | None, Decimal | None]:
     debit_key = mapping.get("debit")
     credit_key = mapping.get("credit")
@@ -251,5 +252,7 @@ def normalize_direction(
     if amount_value is not None:
         if amount_value < 0:
             return "debit", abs(amount_value)
+        if default_direction in {"debit", "credit"}:
+            return default_direction, abs(amount_value)
         return "credit", abs(amount_value)
     return (None, None)

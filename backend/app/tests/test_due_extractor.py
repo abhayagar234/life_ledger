@@ -4,8 +4,10 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.db.base import Base
+from app.models.emi_payment import EMIPayment
 from app.models.import_file import ImportFile
 from app.models.import_row import ImportRow
+from app.models.loan import Loan
 from app.models.normalized_transaction import NormalizedTransaction
 from app.models.user import User
 from app.services.due_extractor import extract_detected_dues
@@ -131,3 +133,70 @@ def test_due_extractor_detects_recurring_sip() -> None:
     detected = extract_detected_dues(db, user_id=user.id, upload_id=import_file.id)
     assert any(d.counterparty_name.lower().startswith("hdfc") and d.frequency == "monthly" for d in detected)
     assert any(abs(d.amount - 1000.0) < 0.01 for d in detected)
+
+
+def test_due_extractor_skips_already_confirmed_due() -> None:
+    db = _make_db()
+    user = User(display_name="Confirmed Due User")
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+
+    import_file = ImportFile(
+        user_id=user.id,
+        file_name="sample_bank_statement.csv",
+        file_type="csv",
+        source_name="sbi_bank_like",
+        source_type="bank",
+        file_hash="netflix-hash-1",
+        status="processed",
+        total_rows=3,
+        imported_rows=3,
+        duplicate_rows=0,
+        error_rows=0,
+    )
+    db.add(import_file)
+    db.flush()
+
+    for row_number, txn_date in enumerate((date(2026, 2, 27), date(2026, 3, 27), date(2026, 4, 27)), start=1):
+        _seed_txn(
+            db,
+            user_id=user.id,
+            import_file_id=import_file.id,
+            row_number=row_number,
+            txn_date=txn_date,
+            amount=199.0,
+            description="NETFLIX SUBSCRIPTION",
+            counterparty="netflix",
+            category_code="subscriptions",
+        )
+
+    loan = Loan(
+        user_id=user.id,
+        loan_type="informal_due",
+        counterparty_name="Netflix",
+        principal_amount=199.0,
+        interest_type="none",
+        start_date=date(2026, 4, 27),
+        emi_amount=199.0,
+        emi_frequency="monthly",
+        status="active",
+        confirmed=True,
+    )
+    db.add(loan)
+    db.flush()
+    db.add(
+        EMIPayment(
+            user_id=user.id,
+            loan_id=loan.id,
+            due_date=date(2026, 5, 27),
+            amount_due=199.0,
+            amount_paid=0,
+            status="pending",
+            source_type="import_detected",
+        )
+    )
+    db.commit()
+
+    detected = extract_detected_dues(db, user_id=user.id, upload_id=import_file.id)
+    assert detected == []

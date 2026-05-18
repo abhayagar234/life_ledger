@@ -36,6 +36,10 @@ function prettyDate(dateString: string) {
 
 function Row({ entry }: { entry: LedgerEntryRead }) {
   const isMoneyIn = entry.cash_direction === "in" || entry.entry_type === "income";
+  const isCashSnapshot = entry.cash_direction === "set";
+  const amountLabel = isCashSnapshot
+    ? `Set to ${formatMoney(entry.amount)}`
+    : `${isMoneyIn ? "+" : "-"} ${formatMoney(entry.amount)}`;
   return (
     <View style={styles.row}>
       <View style={styles.rowCopy}>
@@ -44,8 +48,8 @@ function Row({ entry }: { entry: LedgerEntryRead }) {
         </Text>
         <Text style={styles.rowMeta}>{prettyDate(entry.entry_date)}</Text>
       </View>
-      <Text style={[styles.rowAmount, isMoneyIn ? styles.rowAmountIn : styles.rowAmountOut]}>
-        {`${isMoneyIn ? "+" : "-"} ${formatMoney(entry.amount)}`}
+      <Text style={[styles.rowAmount, isCashSnapshot ? styles.rowAmountNeutral : isMoneyIn ? styles.rowAmountIn : styles.rowAmountOut]}>
+        {amountLabel}
       </Text>
     </View>
   );
@@ -198,5 +202,8 @@ const styles = StyleSheet.create({
   },
   rowAmountOut: {
     color: theme.colors.danger
+  },
+  rowAmountNeutral: {
+    color: theme.colors.primary
   }
 });
